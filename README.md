@@ -1,3 +1,6 @@
+# ¡DISCLAIMER!
+This fork is vibe slop coded
+
 # OpenPOIs
 
 A unified, confidence-scored open dataset of points of interest, configurable
