@@ -6,8 +6,16 @@ dataset, in the order they are executed. Each pipeline is implemented as a
 series of scripts in the ``scripts/`` directory; the scripts call library
 functions documented in the :doc:`api`.
 
-All scripts read their configuration from ``config.yaml`` via
-``config_versioned.Config``. See the individual script docstrings for the
+All scripts read their configuration through
+``openpois.config.load_config()``, which loads ``config.yaml`` and applies the
+selected country. The country is chosen by ``OPENPOIS_COUNTRY`` or the
+top-level ``country`` key. When that value is an ISO 3166-1 alpha-2 code and
+``countries/<ISO2>.yaml`` does not exist, a complete profile is synthesized
+from the bundled ``data/countries.csv`` index (Geofabrik extract/history/
+replication URLs) and Natural Earth (boundary filter, name, extent), so no
+manual input files are required. A ``countries/<ISO2>.yaml`` file, when
+present, overrides the country-specific parts. See the repository README's
+"Country selection" section and the individual script docstrings for the
 exact config keys each script uses.
 
 
@@ -22,6 +30,11 @@ the package itself in editable mode:
    make build_env       # conda env create -f environment.yml (env name: openpois)
    conda activate openpois
    make install_package # pip install -e .
+
+``environment.yml`` is a pinned linux-64 export. For a host-independent
+environment, use the Docker images instead (see ``docker/README.md`` and the
+``docker_pipeline`` / ``docker_up`` Make targets). They pin GDAL/PROJ, osmium,
+tippecanoe, JAX and Node, and only need the data directory mounted.
 
 **Geofabrik OAuth (Pipeline 2 only).** Pipeline 2 downloads full-history
 PBFs from Geofabrik's OAuth-protected internal server. Any OSM account grants
@@ -43,29 +56,40 @@ Pipeline 1: POI Snapshot Downloads
 ----------------------------------
 
 These two scripts are independent and can be run in any order (or in
-parallel). Each downloads a current US-wide POI snapshot from one data
-source and saves it as a GeoParquet file.
-
-**OSM snapshot**
+parallel). Each downloads a current POI snapshot for the **active country**
+(``country`` in ``config.yaml``, or ``OPENPOIS_COUNTRY`` / ``make COUNTRY=...``)
+and saves it as a GeoParquet file. No input files are needed: the reference
+boundary, the OSM extract and the Overture release are fetched automatically.
 
 .. code-block:: bash
 
-   python scripts/osm_snapshot/download.py
+   make snapshots COUNTRY=AR       # both layers
+   # or, one at a time:
+   make snapshot_osm COUNTRY=AR
+   make snapshot_overture COUNTRY=AR
 
-Downloads the Geofabrik North America PBF extract (~11 GB), filters with
-osmium, and parses with pyosmium. Output: ``osm_snapshot.parquet``
-(~7.8 M POIs).
+The underlying scripts are:
+
+.. code-block:: bash
+
+   OPENPOIS_COUNTRY=AR python scripts/osm_snapshot/download.py
+   OPENPOIS_COUNTRY=AR python scripts/overture/download.py
+
+**OSM snapshot**
+
+Downloads the Geofabrik extract(s) listed in
+``download.osm.extracts`` (Argentina: the national extract), filters with
+osmium, and parses with pyosmium. Output: ``osm_snapshot.parquet`` in the
+profile's ``snapshot_osm`` directory.
 
 See :mod:`openpois.io.osm_snapshot`.
 
 **Overture Maps snapshot**
 
-.. code-block:: bash
-
-   python scripts/overture/download.py
-
-Queries Overture Maps GeoParquet files on public S3 via DuckDB. No
-credentials required. Output: ``overture_snapshot.parquet`` (~13 M POIs).
+Queries Overture Maps GeoParquet files on public S3 via DuckDB, filtered to
+the configured country boundary. No credentials required. Output:
+``overture_snapshot.parquet`` in the profile's ``snapshot_overture``
+directory.
 
 See :mod:`openpois.io.overture`.
 

@@ -48,7 +48,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
@@ -160,7 +160,7 @@ def main() -> None:
     viz.mkdir(parents = True, exist_ok = True)
     compare = _compare_module()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     knobs = config.get("conflation", "calibration")
     fit_config = cf.FitConfig(
         min_cell_gold = int(knobs["min_cell_gold"]),

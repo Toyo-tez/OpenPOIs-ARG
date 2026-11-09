@@ -25,14 +25,14 @@ from __future__ import annotations
 
 import time
 
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation.ghost_osm import build_ghosts
 from openpois.io.osm_history_incremental import read_coverage
 
 
 def main() -> None:
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
 
     versions_path = config.get_file_path("osm_data", "osm_versions")
     changes_path = config.get_file_path("osm_data", "osm_changes")

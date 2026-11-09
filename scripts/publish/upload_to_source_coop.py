@@ -7,9 +7,9 @@ Source Cooperative, alongside a freshly generated per-version README.
 
 Remote layout (see docs/data-versioning.md). Writes go through the Source Coop
 data proxy, where the BUCKET is the account and the repository is the first key
-segment:
+segment (both configured under ``publish`` in ``config.yaml``):
 
-    s3://henryspatialanalysis/openpois/          (endpoint https://data.source.coop)
+    s3://{account}/{repo_prefix}/                 (endpoint https://data.source.coop)
         <YYYY-MM-DD-vN>/
             README.md
             osm-parquet/geohash_prefix=*/part-*.parquet
@@ -22,9 +22,7 @@ segment:
         latest/
             (server-side mirror of the most recently published version)
 
-Public *reads* are unaffected and still work anonymously against the legacy flat
-bucket ``us-west-2.opendata.source.coop`` with ``henryspatialanalysis/openpois/``
-keys, which is what the published README's quickstart examples use.
+Public *reads* are at ``https://data.source.coop/{account}/{repo_prefix}/``.
 
 Credentials
 -----------
@@ -47,7 +45,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from config_versioned import Config
+from openpois.config import find_config_path, load_config
 
 from openpois.io.credentials import load_source_coop_credentials
 from openpois.io.source_coop import (
@@ -64,7 +62,7 @@ from openpois.publish.build_readme import (
     load_license,
 )
 
-CONFIG_PATH = Path("~/repos/openpois/config.yaml").expanduser()
+CONFIG_PATH = find_config_path()
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,7 +135,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
 
-    config = Config(str(CONFIG_PATH))
+    config = load_config(CONFIG_PATH)
     version = config.get("versions", "source_coop")
     bucket = config.get("publish", "bucket")
     repo_prefix = config.get("publish", "repo_prefix").rstrip("/")
@@ -342,10 +340,16 @@ def main() -> None:
         )
 
     print()
-    print(f"Version landing page: https://source.coop/{repo_prefix}/")
-    print(f"Version data root:    {public_url(f'{version_prefix}/')}")
+    print(f"Version landing page: https://source.coop/{bucket}/{repo_prefix}/")
+    print(
+        "Version data root:    "
+        f"{public_url(f'{version_prefix}/', account = bucket)}"
+    )
     if not args.skip_latest_mirror:
-        print(f"Latest data root:     {public_url(f'{latest_prefix}/')}")
+        print(
+            "Latest data root:     "
+            f"{public_url(f'{latest_prefix}/', account = bucket)}"
+        )
 
 
 if __name__ == "__main__":

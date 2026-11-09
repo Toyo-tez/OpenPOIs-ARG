@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import duckdb
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 OBSERVATIONS_PATH = config.get_file_path("osm_data", "osm_observations")
 OUT_PATH = config.get_file_path("testing", "test_observations")

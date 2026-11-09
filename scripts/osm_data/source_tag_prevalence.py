@@ -31,23 +31,23 @@ live snapshot (join on osm_id/osm_type == id/type). `source` values are bucketed
 ground / online / import_other / uncategorized by case-insensitive substring match,
 keeping an uncategorized tail so nothing is silently mislabeled.
 
-Outputs (CSV + a markdown summary) land under ~/data/openpois/logs/. Read-only.
+Outputs (CSV + a markdown summary) land under the configured logs directory. Read-only.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 import duckdb
-from config_versioned import Config
+from openpois.config import load_config
 
 # --- Inputs (versioned paths resolved from config.yaml) -----------------------
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 OSM_CHANGES = config.get_file_path("osm_data", "osm_changes")
 OSM_VERSIONS = config.get_file_path("osm_data", "osm_versions")
 OSM_OBSERVATIONS = config.get_file_path("osm_data", "osm_observations")
 OSM_SNAPSHOT = config.get_file_path("snapshot_osm", "snapshot")
 
-OUT_DIR = Path("~/data/openpois/logs").expanduser()
+OUT_DIR = config.get_dir_path("logs")
 KEYS_CSV = OUT_DIR / "source_tag_keys_discovered.csv"
 LIVE_CSV = OUT_DIR / "source_tag_prevalence_live.csv"
 VALUE_CSV = OUT_DIR / "source_value_breakdown.csv"
@@ -115,8 +115,6 @@ def main() -> None:
 
     con = duckdb.connect()
     _session(con, temp_dir)
-
-    bucket_expr = _bucket_case("value")
 
     # --- Step A: discover the provenance-tag key families ---------------------
     print("Step A: discovering source/survey/check key families ...", flush=True)
@@ -228,7 +226,7 @@ def main() -> None:
     # --- Step B: element-level prevalence among live POIs ---------------------
     print("Step B: computing live-POI prevalence ...", flush=True)
     bstats = con.execute(
-        f"""
+        """
         SELECT
             count(*)                                              AS n_total,
             sum((source_val IS NOT NULL)::INT)                    AS n_source,

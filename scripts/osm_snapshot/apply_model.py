@@ -39,7 +39,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation.taxonomy import (
     assign_osm_shared_label,
@@ -58,7 +58,7 @@ from openpois.models.apply import (
 # Configuration
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 MODEL_STUB = config.get("osm_data", "apply_model", "model_stub")
 FILTER_KEYS = config.get("download", "osm", "filter_keys")

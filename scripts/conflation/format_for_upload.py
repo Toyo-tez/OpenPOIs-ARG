@@ -13,7 +13,7 @@ Rows within each partition are sorted by the `geohash` column so spatial
 filters prune via Parquet row-group min/max stats. Queries like
 ``WHERE shared_label = 'Pharmacy'`` read a single partition file.
 """
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.io.geohash_partition import (
     write_label_partitioned_from_parquet,
@@ -23,7 +23,7 @@ from openpois.io.geohash_partition import (
 # Configuration
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 INPUT_PATH = config.get_file_path("conflation", "conflated")
 OUTPUT_DIR = config.get_file_path("conflation", "partitioned")

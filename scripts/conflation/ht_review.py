@@ -542,7 +542,7 @@ def run_review(curves_dir: Path, validation_rows: pd.DataFrame,
 
 
 def main() -> None:
-    from config_versioned import Config
+    from openpois.config import load_config
 
     parser = argparse.ArgumentParser(description = __doc__)
     parser.add_argument("--curves-dir", default = None,
@@ -556,7 +556,7 @@ def main() -> None:
                         help = "Handoff metadata.json (default: config).")
     args = parser.parse_args()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     curves_dir = (Path(args.curves_dir).expanduser() if args.curves_dir
                   else config.get_dir_path("conflation") / "calibration")
     rows_path = (Path(args.rows).expanduser() if args.rows

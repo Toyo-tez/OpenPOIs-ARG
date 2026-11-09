@@ -66,7 +66,7 @@ from pathlib import Path
 import duckdb
 import numpy as np
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
@@ -80,7 +80,6 @@ from openpois.conflation.taxonomy import (  # noqa: E402
     load_overture_crosswalk,
 )
 
-CONFIG_PATH = "~/repos/openpois/config.yaml"
 LEVELS = ["taxonomy_l0", "taxonomy_l1", "taxonomy_l2", "taxonomy_l3"]
 DIFF_QUANTILES = list(range(0, 101, 5))
 ABS_DIFF_THRESHOLDS = [0.05, 0.10, 0.20]
@@ -119,7 +118,7 @@ def _chrome(ax, xlabel = None, ylabel = None, title = None) -> None:
 
 
 def _parse_args() -> argparse.Namespace:
-    config = Config(CONFIG_PATH)
+    config = load_config()
     parser = argparse.ArgumentParser(description = __doc__)
     parser.add_argument(
         "--current-version",
@@ -259,7 +258,7 @@ def _heatmap(ax, prior: np.ndarray, current: np.ndarray, title: str) -> None:
 
 def main() -> None:
     args = _parse_args()
-    config = Config(CONFIG_PATH)
+    config = load_config()
     root = Path(
         config.get("directories", "snapshot_overture", "path")
     ).expanduser()

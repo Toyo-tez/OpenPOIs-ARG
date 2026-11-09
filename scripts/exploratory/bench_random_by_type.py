@@ -108,8 +108,8 @@ def _simulate(
 
 def _load_real_observations() -> pd.DataFrame:
     """Load the real OSM observations via config.yaml."""
-    from config_versioned import Config
-    cfg = Config("~/repos/openpois/config.yaml")
+    from openpois.config import load_config
+    cfg = load_config()
     path = cfg.get_file_path("osm_data", "osm_observations")
     min_value_count = cfg.get(
         "osm_turnover_model", "min_value_count", fail_if_none = False

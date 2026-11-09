@@ -1,11 +1,10 @@
 """
-Download the current US + inhabited-territories OpenStreetMap POI snapshot
-as a GeoParquet file.
+Download the configured OpenStreetMap POI snapshot as a GeoParquet file.
 
-Downloads four Geofabrik PBF extracts — the US-mainland extract (~11 GB,
-covers all 50 states incl. AK + HI), Puerto Rico, US Virgin Islands, and
-American Oceania (Guam, NMI, American Samoa, plus uninhabited US Pacific
-possessions) — uses osmium tags-filter to extract nodes and ways matching
+Downloads one Geofabrik PBF extract per entry in
+``download.osm.extracts`` (the Argentina profile uses the single national
+extract; the US profile uses US mainland, Puerto Rico, US Virgin Islands and
+American Oceania), uses osmium tags-filter to extract nodes and ways matching
 the configured tag keys, parses each result with pyosmium, concatenates the
 per-extract parquets, and saves as GeoParquet. Incremental: skips any PBF
 download or filter step whose output file already exists (controlled by
@@ -15,10 +14,9 @@ Note: osmium is resolved from the conda env bin rather than the shell PATH;
 no manual PATH modification is needed.
 
 Config keys used (config.yaml):
-    download.osm.pbf_url                      — Geofabrik US PBF URL (50 states)
-    download.osm.pr_pbf_url                   — Geofabrik Puerto Rico PBF URL
-    download.osm.usvi_pbf_url                 — Geofabrik US Virgin Islands PBF URL
-    download.osm.american_oceania_pbf_url     — Geofabrik American Oceania PBF URL
+    download.osm.extracts[].name          — extract id (also the file-key prefix)
+    download.osm.extracts[].snapshot_url  — Geofabrik PBF URL
+    download.osm.extracts[].replication_url — public daily-diff directory
     download.osm.filter_keys         — OSM tag keys to retain (e.g. amenity, shop)
     download.osm.extract_keys        — tag keys to include as output columns
     download.osm.overwrite_download  — re-download PBFs even if they already exist
@@ -31,17 +29,18 @@ Config keys used (config.yaml):
     directories.snapshot_osm         — output directory; also used for temp PBF files
 
 Output file:
-    osm_snapshot.parquet — GeoParquet with US + territories POIs (nodes + area centroids)
+    osm_snapshot.parquet — GeoParquet with the country's POIs (nodes + area centroids)
         Columns: osm_id, osm_type, name, geometry, last_edited, source,
         plus all extract_keys columns
 """
-from config_versioned import Config
+from openpois.config import load_config
 from openpois.conflation.taxonomy import (
     build_osm_tag_filter_expressions,
     get_osm_exclusions,
     load_osm_crosswalk,
 )
-from openpois.io.osm_snapshot import SnapshotExtract, download_osm_snapshot
+from openpois.io.extracts import residential_extracts, snapshot_extracts
+from openpois.io.osm_snapshot import download_osm_snapshot
 from openpois.osm.residential import (
     build_residential_layer,
     filter_parquet_by_residential,
@@ -52,7 +51,7 @@ from openpois.osm.residential import (
 # Configuration constants
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 FILTER_KEYS = config.get("download", "osm", "filter_keys")
 EXTRACT_KEYS = config.get("download", "osm", "extract_keys")
@@ -92,38 +91,9 @@ SAVE_DIR.mkdir(parents=True, exist_ok=True)
 
 OUTPUT_PATH = config.get_file_path("snapshot_osm", "snapshot")
 
-# One SnapshotExtract per Geofabrik PBF. Order is preserved through to the
-# concat step; keep the US-mainland extract first since it dominates wall time.
-EXTRACTS = [
-    SnapshotExtract(
-        name = "us",
-        url = config.get("download", "osm", "pbf_url"),
-        raw_pbf_path = config.get_file_path("snapshot_osm", "raw_pbf"),
-        filtered_pbf_path = config.get_file_path("snapshot_osm", "filtered_pbf"),
-    ),
-    SnapshotExtract(
-        name = "pr",
-        url = config.get("download", "osm", "pr_pbf_url"),
-        raw_pbf_path = config.get_file_path("snapshot_osm", "raw_pr_pbf"),
-        filtered_pbf_path = config.get_file_path("snapshot_osm", "filtered_pr_pbf"),
-    ),
-    SnapshotExtract(
-        name = "usvi",
-        url = config.get("download", "osm", "usvi_pbf_url"),
-        raw_pbf_path = config.get_file_path("snapshot_osm", "raw_usvi_pbf"),
-        filtered_pbf_path = config.get_file_path("snapshot_osm", "filtered_usvi_pbf"),
-    ),
-    SnapshotExtract(
-        name = "american_oceania",
-        url = config.get("download", "osm", "american_oceania_pbf_url"),
-        raw_pbf_path = config.get_file_path(
-            "snapshot_osm", "raw_american_oceania_pbf"
-        ),
-        filtered_pbf_path = config.get_file_path(
-            "snapshot_osm", "filtered_american_oceania_pbf"
-        ),
-    ),
-]
+# One SnapshotExtract per configured Geofabrik PBF. Order is preserved through
+# to the concat step; keep the largest extract first where possible.
+EXTRACTS = snapshot_extracts(config)
 
 
 # -----------------------------------------------------------------------------
@@ -158,18 +128,9 @@ if __name__ == "__main__":
     # -------------------------------------------------------------------------
     if RESIDENTIAL_LANDUSE_VALUES and RESIDENTIAL_SCOPED_TAGS:
         print("\n=== Residential-landuse exclusion ===")
-        residential_extracts = [
-            spec._replace(
-                filtered_pbf_path = config.get_file_path(
-                    "snapshot_osm",
-                    "residential_filtered_pbf" if spec.name == "us"
-                    else f"residential_{spec.name}_filtered_pbf",
-                )
-            )
-            for spec in EXTRACTS
-        ]
+        residential_specs = residential_extracts(config)
         build_residential_layer(
-            extracts = residential_extracts,
+            extracts = residential_specs,
             output_path = RESIDENTIAL_AREAS_PATH,
             landuse_values = RESIDENTIAL_LANDUSE_VALUES,
             chunk_dir = CHUNK_DIR,

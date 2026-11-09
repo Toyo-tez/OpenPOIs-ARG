@@ -73,7 +73,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation import calibration, calibration_fit
 
@@ -398,7 +398,7 @@ def main() -> None:
     args = parser.parse_args()
     started = time.time()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     knobs = config.get("conflation", "calibration")
     fit_config = calibration_fit.FitConfig(
         min_cell_gold = int(knobs["min_cell_gold"]),

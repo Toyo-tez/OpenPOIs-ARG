@@ -1,0 +1,97 @@
+# United States + inhabited territories country profile.
+#
+# Select this profile with `country: "US"` in config.yaml, or:
+#   OPENPOIS_COUNTRY=US python ...
+#   make site_build COUNTRY=US
+country:
+  iso2: US
+  iso3: USA
+  name: United States
+  official_name: United States of America
+  languages: [en]
+  currency: USD
+  timezone: America/New_York
+
+paths:
+  data_root: ~/data/openpois
+
+versions:
+  osm_data: "20261022"
+  model_output: "20260727_by_shared_label"
+  snapshot_osm: "20261022"
+  snapshot_overture: "20261021"
+  conflation: "20261022"
+  calibration: "20261001"
+  source_coop: "2026-10-22-v1"
+  ghost_osm: "20261022"
+  manual_overrides: "20260924"
+  id_registry: "20261022"
+
+indicators:
+  enabled: true
+
+download:
+  general:
+    boundary:
+      source_url: "https://www2.census.gov/geo/tiger/GENZ2023/shp/cb_2023_us_state_5m.zip"
+      coastline_buffer_m: 100
+      zip_name: "cb_2023_us_state_5m.zip"
+      shp_name: "cb_2023_us_state_5m.shp"
+      filter_field: "STUSPS"
+      filter_values: ["AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC",
+                      "FL", "GA", "HI", "ID", "IL", "IN", "IA", "KS", "KY",
+                      "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO", "MT",
+                      "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH",
+                      "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT",
+                      "VT", "VA", "WA", "WV", "WI", "WY", "PR", "VI", "GU",
+                      "MP", "AS"]
+  osm:
+    start_date: 2016-01-01
+    end_date: 2026-10-21
+    extracts:
+      - name: us
+        snapshot_url: "https://download.geofabrik.de/north-america/us-latest.osm.pbf"
+        history_url: "https://osm-internal.download.geofabrik.de/north-america/us-internal.osh.pbf"
+        replication_url: "https://download.geofabrik.de/north-america/us-updates/"
+      - name: pr
+        snapshot_url: "https://download.geofabrik.de/north-america/us/puerto-rico-latest.osm.pbf"
+        history_url: "https://osm-internal.download.geofabrik.de/north-america/us/puerto-rico-internal.osh.pbf"
+        replication_url: "https://download.geofabrik.de/north-america/us/puerto-rico-updates/"
+      - name: usvi
+        snapshot_url: "https://download.geofabrik.de/north-america/us/us-virgin-islands-latest.osm.pbf"
+        history_url: "https://osm-internal.download.geofabrik.de/north-america/us/us-virgin-islands-internal.osh.pbf"
+        replication_url: "https://download.geofabrik.de/north-america/us/us-virgin-islands-updates/"
+      - name: american_oceania
+        snapshot_url: "https://download.geofabrik.de/australia-oceania/american-oceania-latest.osm.pbf"
+        history_url: "https://osm-internal.download.geofabrik.de/australia-oceania/american-oceania-internal.osh.pbf"
+        replication_url: "https://download.geofabrik.de/australia-oceania/american-oceania-updates/"
+    history_mode: "incremental"
+    incremental_history:
+      base_version: "20261001"
+      replication_urls:
+        us: "https://download.geofabrik.de/north-america/us-updates/"
+        pr: "https://download.geofabrik.de/north-america/us/puerto-rico-updates/"
+        usvi: "https://download.geofabrik.de/north-america/us/us-virgin-islands-updates/"
+        american_oceania: "https://download.geofabrik.de/australia-oceania/american-oceania-updates/"
+
+conflation:
+  test_bbox:
+    xmin: -122.45
+    ymin: 47.50
+    xmax: -122.25
+    ymax: 47.70
+
+site:
+  title: "OpenPOIs"
+  locale: "en-US"
+  timezone: "America/New_York"
+  initial_center: [-73.9855, 40.758]
+  initial_zoom: 18
+  bbox: null
+  geocoder_country: "US,PR,VI,GU,MP,AS"
+
+publish:
+  version_metadata:
+    osm_snapshot_date: "2026-10-21"
+    overture_release: "2026-10-21.0"
+    model_commit: null

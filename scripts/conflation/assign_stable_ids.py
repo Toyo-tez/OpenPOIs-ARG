@@ -30,7 +30,7 @@ import json
 import time
 from pathlib import Path
 
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation import stable_ids as si
 
@@ -55,7 +55,7 @@ def main() -> None:
     args = parser.parse_args()
     started = time.time()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     release = str(config.get("versions", "conflation"))
     settings = config.get("conflation", "stable_ids", fail_if_none = False) or {}
     guard = float(settings.get("guard_threshold", si.GUARD_THRESHOLD))

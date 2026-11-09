@@ -40,7 +40,7 @@ import argparse
 import time
 from pathlib import Path
 
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation import calibration
 
@@ -76,7 +76,7 @@ def main() -> None:
     args = parser.parse_args()
     started = time.time()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     conflated_base = config.get_file_path("conflation", "conflated")
     if args.test:
         conflated_base = conflated_base.with_name(

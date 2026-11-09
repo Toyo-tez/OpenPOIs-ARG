@@ -49,7 +49,7 @@ import argparse
 import jax.numpy as jnp
 import numpy as np
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.io.osm_history_incremental import require_full_history
 from openpois.models import dispersion, metrics
@@ -61,7 +61,7 @@ from _re_metadata import build_random_effects_metadata
 
 
 # Globals
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 MODEL_DIR = config.get_dir_path("model_output")
 OBSERVATIONS_PATH = config.get_file_path("osm_data", "osm_observations")

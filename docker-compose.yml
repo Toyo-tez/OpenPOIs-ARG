@@ -1,0 +1,76 @@
+name: openpois
+
+# Reproducible local stack:
+#   docker compose up --build        # site on :8080, PMTiles on :8765
+#   docker compose run --rm pipeline snapshot_osm COUNTRY=AR
+#
+# Data lives on the host and is mounted at the container's default data root
+# (/home/mambauser/data/openpois). Override the source with OPENPOIS_DATA_DIR.
+
+x-data-volume: &data-volume
+  - "${OPENPOIS_DATA_DIR:-${HOME}/data/openpois}:/home/mambauser/data/openpois"
+
+# Run the data services as the host user so outputs written into the mounted
+# directory are owned by you. Override for non-1000 UIDs:
+#   OPENPOIS_UID=$(id -u) OPENPOIS_GID=$(id -g) docker compose up
+x-host-user: &host-user "${OPENPOIS_UID:-1000}:${OPENPOIS_GID:-1000}"
+
+# Docker assigns HOME=/ when `--user` has no /etc/passwd entry, which breaks
+# tools that write under ~. Point it at the image's writable home instead.
+x-home: &home
+  HOME: /home/mambauser
+
+services:
+  # Serves the three PMTiles archives + categories JSON with HTTP Range and
+  # CORS, which the browser map requires. Expects site-data to already exist:
+  #   ~/data/openpois/AR/site-data/{osm,overture,conflated}-pmtiles/
+  pmtiles:
+    build:
+      context: .
+      dockerfile: docker/pipeline.Dockerfile
+    image: openpois-pipeline:local
+    user: *host-user
+    environment: *home
+    entrypoint: ["python"]
+    command:
+      - scripts/serve_pmtiles.py
+      - --root
+      - /home/mambauser/data/openpois/${OPENPOIS_COUNTRY:-AR}/site-data
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+    volumes: *data-volume
+    ports:
+      - "8765:8765"
+    restart: unless-stopped
+
+  # Static frontend built for OPENPOIS_COUNTRY and pointed at the PMTiles
+  # service above. Rebuild after changing the country or data version.
+  site:
+    build:
+      context: .
+      dockerfile: docker/site.Dockerfile
+      args:
+        OPENPOIS_COUNTRY: ${OPENPOIS_COUNTRY:-AR}
+        OPENPOIS_PMTILES_BASE_URL: ${OPENPOIS_PMTILES_BASE_URL:-http://localhost:8765}
+        VITE_STADIA_API_KEY: ${VITE_STADIA_API_KEY:-}
+    image: openpois-site:local
+    ports:
+      - "8080:80"
+    depends_on:
+      - pmtiles
+    restart: unless-stopped
+
+  # Not started by `docker compose up`; use it for pipeline runs:
+  #   docker compose run --rm pipeline snapshot_osm COUNTRY=AR
+  pipeline:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: docker/pipeline.Dockerfile
+    image: openpois-pipeline:local
+    user: *host-user
+    environment: *home
+    entrypoint: ["make"]
+    volumes: *data-volume

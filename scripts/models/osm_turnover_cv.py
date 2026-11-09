@@ -40,7 +40,7 @@ Output files (in the model_output version directory):
 import argparse
 
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.models import metrics
 from openpois.models.model_fitter import ModelFitter
@@ -50,7 +50,7 @@ from openpois.models.setup import prepare_data_for_model
 from _re_metadata import build_random_effects_metadata
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 VALID_TERMS = ("amenity", "msa", "amenity_msa", "urbanicity")
 DELTA_VALID_TERMS = ("amenity", "msa")

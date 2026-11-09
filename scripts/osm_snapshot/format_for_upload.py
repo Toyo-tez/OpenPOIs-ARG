@@ -18,7 +18,7 @@ filters prune via Parquet row-group min/max stats. Queries like
 ``WHERE primary_tag = 'shop' AND shop = 'bakery'`` read a single partition
 file.
 """
-from config_versioned import Config
+from openpois.config import load_config
 
 import pyarrow.parquet as pq
 
@@ -31,7 +31,7 @@ from openpois.io.geohash_partition import (
 # Configuration
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 INPUT_PATH = config.get_file_path("snapshot_osm", "rated_snapshot")
 OUTPUT_DIR = config.get_file_path("snapshot_osm", "partitioned")

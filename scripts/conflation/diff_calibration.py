@@ -26,7 +26,7 @@ from __future__ import annotations
 import argparse
 
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 REVIEW_COLUMNS = [
     "unified_id", "source", "name", "shared_label", "calibration_flag",
@@ -42,7 +42,7 @@ def main() -> None:
                         help = "Rows to sample per segment (default 200).")
     args = parser.parse_args()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     conflated = config.get_file_path("conflation", "conflated")
     out_dir = config.get_dir_path("conflation") / "calibration"
     out_dir.mkdir(parents = True, exist_ok = True)

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 from pathlib import Path  # noqa: E402
 
@@ -50,7 +50,7 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator  # noqa: E402
 # Configuration constants
 # ----------------------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 INPUT_PATH = config.get_file_path("conflation", "conflated")
 VIZ_DIR = config.get_dir_path("conflation") / "viz"
 OUTPUT_PATH = VIZ_DIR / "source_contributions.png"

@@ -29,10 +29,10 @@ Prerequisites:
   - the conflated parquet exists for versions.conflation
 
 Output file(s):
-  - ~/data/openpois/conflation/<version>/calibration/{segment}_curve.parquet
-  - ~/data/openpois/conflation/<version>/calibration/{segment}_metadata.json
-  - ~/data/openpois/conflation/<version>/calibration/fit_report.md
-  - ~/data/openpois/conflation/<version>/calibration/ht_review_<round>.pdf
+  - <conflation dir>/{segment}_curve.parquet
+  - <conflation dir>/{segment}_metadata.json
+  - <conflation dir>/fit_report.md
+  - <conflation dir>/ht_review_<round>.pdf
     (+ ht_review_<round>_bins.csv): the design-weighted check of the curves
     just written (``ht_review.py``); it never fails the run
 
@@ -57,7 +57,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation import calibration, calibration_fit
 
@@ -474,7 +474,7 @@ def main() -> None:
     args = parser.parse_args()
     started = time.time()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     knobs = config.get("conflation", "calibration")
 
     rows_path = config.get_file_path("calibration", "validation_rows")

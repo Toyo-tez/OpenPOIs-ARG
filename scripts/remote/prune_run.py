@@ -25,9 +25,9 @@ import argparse
 import shutil
 from pathlib import Path
 
-from config_versioned import Config
+from openpois.config import load_config
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 # Files inside the kept conflation version that are rebuilt or published, not reused.
 CONFLATION_DROP = [

@@ -1,0 +1,42 @@
+# Keep the build context small and deterministic.
+.git
+.gitignore
+.github
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Python bytecode / build artifacts
+__pycache__
+**/__pycache__
+*.py[cod]
+**/*.py[cod]
+**/*.egg-info
+.venv
+venv
+
+# Node / frontend build artifacts (dependencies are installed inside the image)
+site/node_modules
+site/dist
+site/src/country.generated.js
+site/src/taxonomy.generated.js
+site/public/taxonomy.html
+
+# Docs build output
+docs/_build
+
+# Data and credentials never belong in an image
+/data
+**/*.parquet
+**/*.pmtiles
+**/*.fgb
+**/*.pbf
+**/*.osh.pbf
+**/*.log
+.creds
+**/.creds
+.env
+.env.*
+
+# Local caches
+.DS_Store

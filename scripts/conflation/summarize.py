@@ -25,9 +25,9 @@ Output files:
 from __future__ import annotations
 
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 INPUT_PATH = config.get_file_path("conflation", "conflated")
 OUTPUT_DIR = config.get_dir_path("conflation")
 output_path = config.get_file_path("conflation", "summary_by_label")

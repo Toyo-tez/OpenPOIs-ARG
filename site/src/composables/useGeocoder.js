@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { STADIA_GEOCODING_URL } from '../constants.js'
+import { GEOCODER_COUNTRY, STADIA_GEOCODING_URL } from '../constants.js'
 
 const results = ref([])
 const loading = ref(false)
@@ -19,11 +19,13 @@ async function search(query) {
         const params = new URLSearchParams({
           api_key: import.meta.env.VITE_STADIA_API_KEY,
           text: query,
-          // Match the dataset's geographic scope: 50 states + DC + the
-          // 5 inhabited US territories (PR, VI, GU, MP, AS).
-          'boundary.country': 'US,PR,VI,GU,MP,AS',
           size: '5',
         })
+        // Match the dataset's geographic scope. Generated from the active
+        // country profile (e.g. "AR" or "US,PR,VI,GU,MP,AS").
+        if (GEOCODER_COUNTRY) {
+          params.set('boundary.country', GEOCODER_COUNTRY)
+        }
         const resp = await fetch(`${STADIA_GEOCODING_URL}?${params}`)
         const data = await resp.json()
         results.value = data.features ?? []

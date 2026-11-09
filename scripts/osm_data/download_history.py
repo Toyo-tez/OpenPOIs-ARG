@@ -1,14 +1,16 @@
 """
-Download OSM full-history data for the US + inhabited territories for POI
+Download OSM full-history data for the configured extracts for POI
 change-rate modelling.
 
-Downloads four Geofabrik full-history PBFs (US + Puerto Rico + US Virgin
-Islands + American Oceania — which bundles Guam, NMI, American Samoa, and
-the uninhabited US Pacific possessions), filters them to the configured POI
-tag keys, slices to the configured date range with ``osmium time-filter``,
-and streams each element's versions into osm_versions.parquet plus one row
-per tag-level change into osm_changes.parquet. Those two Parquets feed
-format_tabular.py unchanged.
+Downloads one Geofabrik full-history PBF per entry in
+``download.osm.extracts`` (the Argentina profile uses the single national
+extract; the US profile uses US + Puerto Rico + US Virgin Islands + American
+Oceania — the last bundles Guam, NMI, American Samoa, and the uninhabited US
+Pacific possessions), filters them to the configured POI tag keys, slices to
+the configured date range with ``osmium time-filter``, and streams each
+element's versions into osm_versions.parquet plus one row per tag-level
+change into osm_changes.parquet. Those two Parquets feed format_tabular.py
+unchanged.
 
 Geofabrik's internal server requires OSM OAuth. Point ``history_cookie_file``
 at a Netscape-format cookie jar (export from a browser logged in at
@@ -21,12 +23,8 @@ unaffected; the rater falls back to the global-mean delta for any
 ``shared_label`` that lacks territory-specific history evidence.
 
 Config keys used (config.yaml):
-    download.osm.history_pbf_url                  — Geofabrik US history PBF URL
-    download.osm.pr_history_pbf_url               — Geofabrik PR history PBF URL
-    download.osm.usvi_history_pbf_url             — Geofabrik USVI history PBF URL
-    download.osm.american_oceania_history_pbf_url — Geofabrik American-Oceania
-                                                    history PBF URL (covers
-                                                    Guam, NMI, American Samoa)
+    download.osm.extracts[].name          — extract id (also the file-key prefix)
+    download.osm.extracts[].history_url   — Geofabrik full-history PBF URL
     download.osm.history_cookie_file  — cookie file for Geofabrik OAuth (or null)
     download.osm.filter_keys          — OSM tag keys to retain
     download.osm.start_date           — start of time-filter window
@@ -56,12 +54,12 @@ Usage:
 import argparse
 import datetime
 
-from config_versioned import Config
-
+from openpois.config import load_config
 from openpois.conflation.taxonomy import (
     build_osm_tag_filter_expressions,
     load_osm_crosswalk,
 )
+from openpois.io.extracts import history_extracts, replication_urls
 from openpois.io.osm_history_incremental import (
     HistoryCoverage,
     plan_sequences,
@@ -70,13 +68,13 @@ from openpois.io.osm_history_incremental import (
     roll_osm_history,
     write_coverage,
 )
-from openpois.io.osm_history_pbf import HistoryExtract, download_osm_history
+from openpois.io.osm_history_pbf import download_osm_history
 
 # -----------------------------------------------------------------------------
 # Configuration constants
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 HISTORY_COOKIE_FILE = config.get(
     "download", "osm", "history_cookie_file", fail_if_none = False
@@ -104,66 +102,17 @@ SAVE_DIR.mkdir(parents = True, exist_ok = True)
 
 OUTPUT_VERSIONS = config.get_file_path("osm_data", "osm_versions")
 OUTPUT_CHANGES = config.get_file_path("osm_data", "osm_changes")
-BASE_DIR = config.get_dir_path(
-    "osm_data", custom_version = INCREMENTAL["base_version"]
+BASE_VERSION = INCREMENTAL.get("base_version")
+BASE_DIR = (
+    config.get_dir_path("osm_data", custom_version = BASE_VERSION)
+    if BASE_VERSION
+    else None
 )
+REPLICATION_URLS = replication_urls(config)
 
-# One HistoryExtract per Geofabrik full-history PBF. Order is preserved
-# through to the concat step; keep the US-mainland extract first since it
-# dominates wall time and ``_concat_history`` only drops rows from later
-# extracts.
-EXTRACTS = [
-    HistoryExtract(
-        name = "us",
-        url = config.get("download", "osm", "history_pbf_url"),
-        raw_pbf_path = config.get_file_path("osm_data", "raw_history_pbf"),
-        filtered_pbf_path = config.get_file_path("osm_data", "filtered_history_pbf"),
-        time_filtered_pbf_path = config.get_file_path(
-            "osm_data", "time_filtered_history_pbf"
-        ),
-        versions_path = config.get_file_path("osm_data", "us_versions"),
-        changes_path = config.get_file_path("osm_data", "us_changes"),
-    ),
-    HistoryExtract(
-        name = "pr",
-        url = config.get("download", "osm", "pr_history_pbf_url"),
-        raw_pbf_path = config.get_file_path("osm_data", "raw_pr_history_pbf"),
-        filtered_pbf_path = config.get_file_path("osm_data", "filtered_pr_history_pbf"),
-        time_filtered_pbf_path = config.get_file_path(
-            "osm_data", "time_filtered_pr_history_pbf"
-        ),
-        versions_path = config.get_file_path("osm_data", "pr_versions"),
-        changes_path = config.get_file_path("osm_data", "pr_changes"),
-    ),
-    HistoryExtract(
-        name = "usvi",
-        url = config.get("download", "osm", "usvi_history_pbf_url"),
-        raw_pbf_path = config.get_file_path("osm_data", "raw_usvi_history_pbf"),
-        filtered_pbf_path = config.get_file_path(
-            "osm_data", "filtered_usvi_history_pbf"
-        ),
-        time_filtered_pbf_path = config.get_file_path(
-            "osm_data", "time_filtered_usvi_history_pbf"
-        ),
-        versions_path = config.get_file_path("osm_data", "usvi_versions"),
-        changes_path = config.get_file_path("osm_data", "usvi_changes"),
-    ),
-    HistoryExtract(
-        name = "american_oceania",
-        url = config.get("download", "osm", "american_oceania_history_pbf_url"),
-        raw_pbf_path = config.get_file_path(
-            "osm_data", "raw_american_oceania_history_pbf"
-        ),
-        filtered_pbf_path = config.get_file_path(
-            "osm_data", "filtered_american_oceania_history_pbf"
-        ),
-        time_filtered_pbf_path = config.get_file_path(
-            "osm_data", "time_filtered_american_oceania_history_pbf"
-        ),
-        versions_path = config.get_file_path("osm_data", "american_oceania_versions"),
-        changes_path = config.get_file_path("osm_data", "american_oceania_changes"),
-    ),
-]
+# One HistoryExtract per configured Geofabrik full-history PBF. Order is
+# preserved through to the concat step; keep the largest extract first.
+EXTRACTS = history_extracts(config)
 
 
 # -----------------------------------------------------------------------------
@@ -220,9 +169,15 @@ def run_full() -> None:
 
 def plan_incremental() -> None:
     """Print the diff sequences each feed would fetch; download nothing."""
+    if BASE_DIR is None:
+        raise SystemExit(
+            "download.osm.incremental_history.base_version is not set in the "
+            "active country profile; an incremental run needs a prior full "
+            "run to roll forward from."
+        )
     coverage = read_coverage(BASE_DIR)
     print(
-        f"Base {INCREMENTAL['base_version']}: mode {coverage.mode}, "
+        f"Base {BASE_VERSION}: mode {coverage.mode}, "
         f"coverage_end {coverage.coverage_end.isoformat()}, "
         f"chain length {coverage.chain_length}"
     )
@@ -234,7 +189,7 @@ def plan_incremental() -> None:
             "diff instead."
         )
         end_utc = None
-    for name, url in INCREMENTAL["replication_urls"].items():
+    for name, url in REPLICATION_URLS.items():
         get_state = replication_state_getter(url)
         newest = get_state(None)
         if newest is None:
@@ -257,13 +212,19 @@ def plan_incremental() -> None:
 
 def run_incremental() -> None:
     """Roll the base run's parquets forward with the daily diffs."""
+    if BASE_DIR is None or BASE_VERSION is None:
+        raise SystemExit(
+            "download.osm.incremental_history.base_version is not set in the "
+            "active country profile; set it to a prior full osm_data version "
+            "or use history_mode: full."
+        )
     roll_osm_history(
         base_dir = BASE_DIR,
-        base_version = INCREMENTAL["base_version"],
+        base_version = BASE_VERSION,
         out_dir = SAVE_DIR,
         out_versions_path = OUTPUT_VERSIONS,
         out_changes_path = OUTPUT_CHANGES,
-        replication_urls = INCREMENTAL["replication_urls"],
+        replication_urls = REPLICATION_URLS,
         tag_filter_exprs = TAG_FILTER_EXPRS,
         end_date = END_DATE.replace(tzinfo = datetime.timezone.utc),
         max_chain_months = INCREMENTAL["max_chain_months"],

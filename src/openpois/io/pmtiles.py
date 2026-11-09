@@ -145,6 +145,14 @@ def _stage_flatgeobuf(
     """
     pq_file = pq.ParquetFile(input_parquet)
     total_rows = pq_file.metadata.num_rows
+    available = set(pq_file.schema_arrow.names)
+    missing = [p for p in properties if p not in available]
+    if missing:
+        print(
+            "  WARNING: input lacks tile properties, skipping: "
+            + ", ".join(missing)
+        )
+        properties = [p for p in properties if p in available]
     read_cols = list(properties) + ["geometry"]
     n_written = 0
     first_batch = True

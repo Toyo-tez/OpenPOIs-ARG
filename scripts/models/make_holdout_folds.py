@@ -23,13 +23,13 @@ Output (an ``id, fold`` parquet at ``osm_data.holdout_folds``):
 import argparse
 
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.models import metrics
 from openpois.models.setup import prepare_data_for_model
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 
 if __name__ == "__main__":

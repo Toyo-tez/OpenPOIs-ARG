@@ -36,10 +36,13 @@ jobs:
           python-version: '3.12'
 
       - name: Install Python dependencies
-        run: pip install -r docs/requirements.txt pandas
+        run: pip install -r docs/requirements.txt pandas pyyaml config-versioned==0.2.0
 
       - name: Build taxonomy page
         run: python scripts/build_taxonomy.py
+
+      - name: Generate country config
+        run: PYTHONPATH=src python scripts/build_site_config.py
 
       - name: Build
         run: npm run build

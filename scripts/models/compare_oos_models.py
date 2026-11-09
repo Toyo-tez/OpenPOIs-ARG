@@ -17,10 +17,10 @@ import argparse
 from pathlib import Path
 
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 # version → human-readable label (λ random-effects structure).
 DEFAULT_SPECS = {

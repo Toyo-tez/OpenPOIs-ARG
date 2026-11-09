@@ -28,21 +28,47 @@ set -euo pipefail
 HOST=${OPENPOIS_REMOTE_HOST:-ec2-openpois}
 HERE=$(cd "$(dirname "$0")" && pwd)
 LOCAL_REPO=$(cd "$HERE/../.." && pwd)
-LOCAL_DATA=~/data/openpois
+export OPENPOIS_CONFIG=${OPENPOIS_CONFIG:-$LOCAL_REPO/config.yaml}
 RSYNC=(rsync -a --partial -e "ssh -q")
+
+# Resolve the country-aware data root from the active config (OPENPOIS_COUNTRY
+# wins over config.yaml). Both hosts share the same ~/data layout; set
+# OPENPOIS_LOCAL_DATA / OPENPOIS_REMOTE_DATA to point them elsewhere.
+_data_root() {
+    ( cd "$LOCAL_REPO" && python3 -c \
+        "from openpois.config import load_config; print(load_config().get_dir_path('conflation').parent.parent)" \
+        2> /dev/null ) || echo "$HOME/data/openpois"
+}
+LOCAL_DATA=${OPENPOIS_LOCAL_DATA:-$(_data_root)}
+# Remote paths are relative to the remote $HOME so rsync/ssh expand them there.
+REMOTE_DATA=${OPENPOIS_REMOTE_DATA:-${LOCAL_DATA#"$HOME"/}}
+# Literal remote expression for shell snippets: "$HOME/<relative>" or an
+# absolute path when the caller supplied one.
+if [[ $REMOTE_DATA == /* ]]; then
+    REMOTE_DATA_EXPR=$REMOTE_DATA
+else
+    REMOTE_DATA_EXPR="\$HOME/$REMOTE_DATA"
+fi
 
 die() { echo "error: $*" >&2; exit 1; }
 
 # Run a command string on the remote host after the shared prelude. The script goes
 # over stdin, so nothing in it shows up in a remote process listing.
 remote() {
-    ssh -q "$HOST" bash -s <<< "$(cat "$HERE/remote_env.sh")"$'\n'"$1"
+    local prelude
+    prelude=$(cat "$HERE/remote_env.sh")
+    # Propagate the country selection to the remote host; the Makefile exports
+    # it locally, but the ssh session does not inherit our environment.
+    if [[ -n ${OPENPOIS_COUNTRY:-} ]]; then
+        prelude+=$'\n'"export OPENPOIS_COUNTRY=$(printf %q "$OPENPOIS_COUNTRY")"
+    fi
+    ssh -q "$HOST" bash -s <<< "$prelude"$'\n'"$1"
 }
 
 # Launch <command string> as a detached stage; print the remote log path.
 launch() {
     local stage=$1 cmd=$2 log
-    log="\$HOME/data/openpois/logs/${stage}_$(date -u +%Y%m%d_%H%M%S).log"
+    log="$REMOTE_DATA_EXPR/logs/${stage}_$(date -u +%Y%m%d_%H%M%S).log"
     remote "
         log=$log
         setsid nohup bash scripts/remote/stage_runner.sh \"\$log\" $(printf %q "$stage") \
@@ -52,8 +78,9 @@ launch() {
 }
 
 local_version() {
-    python3 -c "import sys, yaml
-print(yaml.safe_load(open('$LOCAL_REPO/config.yaml'))['versions'][sys.argv[1]])" "$1"
+    ( cd "$LOCAL_REPO" && python3 -c \
+        "import sys; from openpois.config import load_config; print(load_config().get('versions', sys.argv[1]))" \
+        "$1" )
 }
 
 cmd_status() {
@@ -67,16 +94,17 @@ cmd_status() {
 }
 
 cmd_setup() {
-    remote '
-        mkdir -p ~/repos ~/data/openpois ~/efs-mount/analysis/openpois/logs
+    remote "
+        data=$REMOTE_DATA_EXPR
+        mkdir -p ~/repos \"\$data\" ~/efs-mount/analysis/openpois/logs
         [ -e ~/repos/openpois ] || ln -s ~/efs-mount/repos/OpenPOIs ~/repos/openpois
-        if [ -d ~/data/openpois/logs ] && [ ! -L ~/data/openpois/logs ]; then
-            echo "~/data/openpois/logs is a real directory; move its contents first" >&2
+        if [ -d \"\$data/logs\" ] && [ ! -L \"\$data/logs\" ]; then
+            echo \"\$data/logs is a real directory; move its contents first\" >&2
             exit 1
         fi
-        [ -L ~/data/openpois/logs ] \
-            || ln -s ~/efs-mount/analysis/openpois/logs ~/data/openpois/logs
-        ls -ld ~/repos/openpois ~/data/openpois/logs'
+        [ -L \"\$data/logs\" ] \
+            || ln -s ~/efs-mount/analysis/openpois/logs \"\$data/logs\"
+        ls -ld ~/repos/openpois \"\$data/logs\""
     # environment.yml is exported from the laptop env, so its pip section pins
     # editable installs of local repos that are not on PyPI: openpois itself
     # (installed from the checkout below), and sga-walkability and versioned-config,
@@ -93,7 +121,7 @@ cmd_setup() {
                 || exit 1
         fi
         conda activate openpois
-        pip install --no-deps -e ~/repos/openpois || exit 1
+        pip install --no-deps -e "$OPENPOIS_REPO" || exit 1
         python -m pytest tests/ -q -p no:cacheprovider 2>&1 | tail -20'
 }
 
@@ -131,7 +159,7 @@ cmd_seed() {
         "$LOCAL_DATA/./conflation/$conflation/calibration" \
         "$LOCAL_DATA/./boundary" \
         "$LOCAL_DATA/./census_areas" \
-        "$HOST:data/openpois/"
+        "$HOST:$REMOTE_DATA/"
     cmd_push_handoff "$calibration"
 }
 
@@ -198,7 +226,7 @@ cmd_summary() {
 cmd_pull() {
     local version=${1:?usage: pull <conflation version> [--conflated] [--cd]}
     shift
-    local base="$HOST:data/openpois/."
+    local base="$HOST:$REMOTE_DATA/."
     local sources=(
         "$base/conflation/$version/calibration"
         "$base/conflation/$version/viz"
@@ -226,7 +254,7 @@ cmd_pull() {
     done
     "${RSYNC[@]}" -R --ignore-missing-args --exclude '*draws*.parquet' \
         --info=progress2 "${sources[@]}" "$LOCAL_DATA/"
-    "${RSYNC[@]}" "$HOST:data/openpois/logs/" "$LOCAL_DATA/logs/"
+    "${RSYNC[@]}" "$HOST:$REMOTE_DATA/logs/" "$LOCAL_DATA/logs/"
     echo "pulled into $LOCAL_DATA/conflation/$version/"
 }
 
@@ -260,12 +288,12 @@ env = {
 }
 print(base64.b64encode(json.dumps(env).encode()).decode())') \
                 || die "source-coop creds failed; run 'source-coop login' first"
-            remote "umask 077; echo $payload | base64 -d > ~/repos/openpois/.env.json
-                    ls -l ~/repos/openpois/.env.json"
+            remote "umask 077; echo $payload | base64 -d > \"\$OPENPOIS_REPO/.env.json\"
+                    ls -l \"\$OPENPOIS_REPO/.env.json\""
             echo "(the line above the listing is the token expiry)"
             ;;
         clear)
-            remote "rm -f ~/repos/openpois/.env.json && echo 'removed remote .env.json'"
+            remote "rm -f \"\$OPENPOIS_REPO/.env.json\" && echo 'removed remote .env.json'"
             ;;
         *) die "usage: creds put|clear" ;;
     esac

@@ -31,6 +31,7 @@ STS tokens typically last an hour or so.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import time
@@ -45,10 +46,12 @@ REQUIRED_KEYS = (
     "region_name",
 )
 
+DEFAULT_ENV_FILE = "~/repos/openpois/.env.json"
+
 REFRESH_HINT = (
-    "Regenerate temporary credentials at "
-    "https://source.coop/repositories/henryspatialanalysis/openpois/manage "
-    "and write them to .env.json at the repo root."
+    "Regenerate temporary credentials in the Source Cooperative repository "
+    "settings and write them to the credentials file (publish.credentials_file "
+    "in config.yaml, or OPENPOIS_CREDENTIALS_FILE)."
 )
 
 STALE_SECONDS = 60 * 60  # Source Coop tokens usually last ~1 hour.
@@ -108,8 +111,9 @@ def load_credentials_from_cli(verbose: bool = True) -> dict | None:
 def load_source_coop_credentials(env_file: Path | str | None = None) -> dict:
     """Read Source Coop temporary S3 credentials.
 
-    Prefers the ``source-coop`` CLI; falls back to ``env_file``, which defaults
-    to ``~/repos/openpois/.env.json``.
+    Prefers the ``source-coop`` CLI; falls back to ``env_file``. When
+    ``env_file`` is None the ``OPENPOIS_CREDENTIALS_FILE`` environment variable
+    is used, then ``~/repos/openpois/.env.json`` for backwards compatibility.
     Raises ``FileNotFoundError`` or ``ValueError`` with a refresh hint if the
     file is missing or malformed. Prints a warning if the file's mtime is
     older than ~1 hour (tokens may have expired).
@@ -119,7 +123,7 @@ def load_source_coop_credentials(env_file: Path | str | None = None) -> dict:
         return from_cli
 
     if env_file is None:
-        env_file = Path.home() / "repos" / "openpois" / ".env.json"
+        env_file = os.environ.get("OPENPOIS_CREDENTIALS_FILE", DEFAULT_ENV_FILE)
     env_file = Path(env_file).expanduser()
 
     if not env_file.exists():

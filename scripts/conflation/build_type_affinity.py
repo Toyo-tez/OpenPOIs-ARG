@@ -52,7 +52,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation.taxonomy import (
     EXCLUDE_LABEL,
@@ -61,7 +61,7 @@ from openpois.conflation.taxonomy import (
     load_overture_crosswalk,
 )
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 OVERTURE_PATH = config.get_file_path("snapshot_overture", "snapshot")
 CONFLATED_PATH = config.get_file_path("conflation", "conflated")
 OUT_PATH = (

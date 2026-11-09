@@ -103,19 +103,24 @@ def classify_places(
 
 def assign_indicators(
     points_gdf: gpd.GeoDataFrame,
-    msa_gdf: gpd.GeoDataFrame,
-    classified_places_gdf: gpd.GeoDataFrame,
+    msa_gdf: gpd.GeoDataFrame | None,
+    classified_places_gdf: gpd.GeoDataFrame | None,
 ) -> gpd.GeoDataFrame:
     """
     Add ``msa_code`` and ``urban_rural`` to a points GeoDataFrame via two
     point-in-polygon spatial joins.
 
+    A ``None`` layer disables that indicator and fills its column with the
+    configured default (``NO_MSA`` / ``rural``).  This lets country profiles
+    without Census-style reference areas still run the model pipeline.
+
     Args:
         points_gdf: Points (EPSG:4326) to enrich. Any non-geometry columns are
             preserved. Must not already contain ``msa_code``/``urban_rural``.
-        msa_gdf: Metropolitan Statistical Areas with ``[msa_code, geometry]``.
-        classified_places_gdf: Places with ``[urban_rural, geometry]`` from
-            :func:`classify_places`.
+        msa_gdf: Metropolitan Statistical Areas with ``[msa_code, geometry]``,
+            or ``None`` to disable the region indicator.
+        classified_places_gdf: Places with ``[urban_rural, geometry]``, or
+            ``None`` to disable the urban/rural indicator.
 
     Returns:
         Copy of ``points_gdf`` with ``msa_code`` (``NO_MSA`` outside any MSA)
@@ -126,30 +131,37 @@ def assign_indicators(
         points_gdf = points_gdf.to_crs("EPSG:4326")
     out = points_gdf.copy()
 
-    msa_join = gpd.sjoin(
-        out, msa_gdf.loc[:, ["msa_code", "geometry"]], how = "left", predicate = "within"
-    )
-    # Overlapping polygons or boundary touches could duplicate rows; keep the
-    # first match per original row so the join is row-preserving.
-    msa_join = msa_join[~msa_join.index.duplicated(keep = "first")]
-    out["msa_code"] = msa_join["msa_code"].fillna(NO_MSA).to_numpy()
+    if msa_gdf is None:
+        out["msa_code"] = NO_MSA
+    else:
+        msa_join = gpd.sjoin(
+            out, msa_gdf.loc[:, ["msa_code", "geometry"]],
+            how = "left", predicate = "within",
+        )
+        # Overlapping polygons or boundary touches could duplicate rows; keep the
+        # first match per original row so the join is row-preserving.
+        msa_join = msa_join[~msa_join.index.duplicated(keep = "first")]
+        out["msa_code"] = msa_join["msa_code"].fillna(NO_MSA).to_numpy()
 
-    place_join = gpd.sjoin(
-        out.drop(columns = ["msa_code"]),
-        classified_places_gdf.loc[:, ["urban_rural", "geometry"]],
-        how = "left",
-        predicate = "within",
-    )
-    place_join = place_join[~place_join.index.duplicated(keep = "first")]
-    out["urban_rural"] = place_join["urban_rural"].fillna(RURAL).to_numpy()
+    if classified_places_gdf is None:
+        out["urban_rural"] = RURAL
+    else:
+        place_join = gpd.sjoin(
+            out.drop(columns = ["msa_code"]),
+            classified_places_gdf.loc[:, ["urban_rural", "geometry"]],
+            how = "left",
+            predicate = "within",
+        )
+        place_join = place_join[~place_join.index.duplicated(keep = "first")]
+        out["urban_rural"] = place_join["urban_rural"].fillna(RURAL).to_numpy()
     return out
 
 
 def element_indicator_map(
     unique_type_ids: pd.DataFrame,
     snapshot_path: Path,
-    msa_gdf: gpd.GeoDataFrame,
-    classified_places_gdf: gpd.GeoDataFrame,
+    msa_gdf: gpd.GeoDataFrame | None,
+    classified_places_gdf: gpd.GeoDataFrame | None,
     changes_path: Path | None = None,
 ) -> pd.DataFrame:
     """

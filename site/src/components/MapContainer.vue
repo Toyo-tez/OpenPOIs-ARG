@@ -96,6 +96,7 @@ import {
   BASE_MAP_STYLES,
   INITIAL_CENTER,
   INITIAL_ZOOM,
+  MAP_BBOX,
   MIN_ZOOM,
 } from '../constants.js'
 
@@ -135,11 +136,16 @@ function getDataLayers() {
 
 onMounted(async () => {
   const hashState = parseMapHash()
-  const view = new View({
+  const viewOptions = {
     center: hashState ? hashState.center : fromLonLat(INITIAL_CENTER),
     zoom: hashState ? hashState.zoom : INITIAL_ZOOM,
     minZoom: MIN_ZOOM,
-  })
+  }
+  // Optional country extent from the generated profile (config.yaml `site.bbox`).
+  if (MAP_BBOX) {
+    viewOptions.extent = transformExtent(MAP_BBOX, 'EPSG:4326', 'EPSG:3857')
+  }
+  const view = new View(viewOptions)
 
   const osmLyr = getOsmLayer()
   const overtureLyr = getOvertureLayer()

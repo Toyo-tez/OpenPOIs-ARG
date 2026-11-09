@@ -33,20 +33,27 @@
 # Log lines "STAGE <n> START/DONE" and "PIPELINE DONE/FAILED" are the markers the
 # heartbeat watches.
 set -u
-REPO=~/repos/openpois
-PY=~/miniforge3/envs/openpois/bin/python
+# Resolve the checkout from this script's location so the tool works from any
+# clone/worktree, not only ~/repos/openpois.
+REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
+export OPENPOIS_CONFIG=${OPENPOIS_CONFIG:-$REPO/config.yaml}
+PY=${OPENPOIS_PYTHON:-$HOME/miniforge3/envs/openpois/bin/python}
+# Data root comes from the active country profile (config.yaml + countries/<ISO>).
+DATA_ROOT=${OPENPOIS_DATA_ROOT:-$(cd "$REPO" && "$PY" -c \
+    "from openpois.config import load_config; print(load_config().get_dir_path('conflation').parent.parent)" \
+    2> /dev/null || echo "$HOME/data/openpois")}
 MODE=${MODE:-full}
 # Output directory: override for a new run, e.g.
-#   EVAL=~/data/openpois/conflation/<round version>/calibration_eval_bayes_<date> bash run_bayes_phase1.sh
+#   EVAL=$DATA_ROOT/conflation/<round version>/calibration_eval_bayes_<date> bash run_bayes_phase1.sh
 # MODE=mixture defaults to the run's own conflation version (read from config.yaml
 # as the remote stage runner does).
 if [ -z "${EVAL:-}" ]; then
   if [ "$MODE" = mixture ]; then
-    VERSION=$(cd "$REPO" && $PY -c "import yaml; print(yaml.safe_load(open('config.yaml'))['versions']['conflation'])") \
+    VERSION=$(cd "$REPO" && "$PY" -c "from openpois.config import load_config; print(load_config().get('versions', 'conflation'))") \
       || { echo "PIPELINE FAILED: cannot read versions.conflation"; exit 1; }
-    EVAL=~/data/openpois/conflation/$VERSION/calibration_bayes
+    EVAL=$DATA_ROOT/conflation/$VERSION/calibration_bayes
   else
-    EVAL=~/data/openpois/conflation/20260730/calibration_eval_bayes_20260927
+    EVAL=$DATA_ROOT/conflation/20260730/calibration_eval_bayes_20260927
   fi
 fi
 mkdir -p "$EVAL/logs"
@@ -56,10 +63,10 @@ LOGS=$EVAL/logs
 # for a short local check, e.g. MAIN="--warmup 200 --samples 200 --chains 2".
 # conflation.calibration.bayes: sampler settings for the production fits.
 bayes_setting() {  # bayes_setting <key> [segment]: one value, or empty
-  REPO="$REPO" $PY - "$@" <<'PYEOF'
-import os, sys, yaml
-config = os.path.join(os.path.expanduser(os.environ["REPO"]), "config.yaml")
-b = yaml.safe_load(open(config))["conflation"]["calibration"].get("bayes", {})
+  REPO="$REPO" "$PY" - "$@" <<'PYEOF'
+import sys
+from openpois.config import load_config
+b = load_config().config["conflation"]["calibration"].get("bayes", {})
 value = b.get(sys.argv[1])
 if isinstance(value, dict):
     value = value.get(sys.argv[2]) if len(sys.argv) > 2 else None

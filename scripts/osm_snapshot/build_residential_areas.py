@@ -6,8 +6,8 @@ The POI ingest filter is derived from the taxonomy crosswalk and value-scopes
 ``landuse`` to ``cemetery,religious``, so residential polygons never reach the
 filtered POI PBF. They need their own osmium pass over the *raw* Geofabrik
 extracts — which ``scripts/osm_snapshot/download.py`` unlinks once it has a
-snapshot, so a standalone run re-downloads them (~11 GB for the US extract,
-resumable via ``download_resilient``).
+snapshot, so a standalone run re-downloads them (resumable via
+``download_resilient``).
 
 The result is persisted next to the snapshot as ``landuse_residential.parquet``
 so retuning the exclusion never costs another Geofabrik pull.
@@ -17,7 +17,7 @@ raw PBFs are still on disk; use this script for a rebuild, or to build the
 layer for a snapshot version that predates the wiring.
 
 Config keys used (config.yaml):
-    download.osm.pbf_url, pr_pbf_url, usvi_pbf_url, american_oceania_pbf_url
+    download.osm.extracts[].name, .snapshot_url
     download.osm.residential_exclusion.landuse_values
     directories.snapshot_osm.residential_areas — output
     directories.snapshot_osm.residential_*_filtered_pbf — intermediates
@@ -31,12 +31,11 @@ from __future__ import annotations
 
 import argparse
 
-from config_versioned import Config
-
-from openpois.io.osm_snapshot import SnapshotExtract
+from openpois.config import load_config
+from openpois.io.extracts import residential_extracts
 from openpois.osm.residential import DEFAULT_MAX_AREA_NODES, build_residential_layer
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 RESIDENTIAL = config.get(
     "download", "osm", "residential_exclusion", fail_if_none = False,
@@ -45,44 +44,9 @@ LANDUSE_VALUES = RESIDENTIAL.get("landuse_values") or []
 OUTPUT_PATH = config.get_file_path("snapshot_osm", "residential_areas")
 SAVE_DIR = config.get_dir_path("snapshot_osm")
 
-# Same four Geofabrik extracts as the POI snapshot, but pointed at the
+# Same configured Geofabrik extracts as the POI snapshot, but pointed at the
 # residential filtered-PBF paths so the two passes never collide.
-EXTRACTS = [
-    SnapshotExtract(
-        name = "us",
-        url = config.get("download", "osm", "pbf_url"),
-        raw_pbf_path = config.get_file_path("snapshot_osm", "raw_pbf"),
-        filtered_pbf_path = config.get_file_path(
-            "snapshot_osm", "residential_filtered_pbf"
-        ),
-    ),
-    SnapshotExtract(
-        name = "pr",
-        url = config.get("download", "osm", "pr_pbf_url"),
-        raw_pbf_path = config.get_file_path("snapshot_osm", "raw_pr_pbf"),
-        filtered_pbf_path = config.get_file_path(
-            "snapshot_osm", "residential_pr_filtered_pbf"
-        ),
-    ),
-    SnapshotExtract(
-        name = "usvi",
-        url = config.get("download", "osm", "usvi_pbf_url"),
-        raw_pbf_path = config.get_file_path("snapshot_osm", "raw_usvi_pbf"),
-        filtered_pbf_path = config.get_file_path(
-            "snapshot_osm", "residential_usvi_filtered_pbf"
-        ),
-    ),
-    SnapshotExtract(
-        name = "american_oceania",
-        url = config.get("download", "osm", "american_oceania_pbf_url"),
-        raw_pbf_path = config.get_file_path(
-            "snapshot_osm", "raw_american_oceania_pbf"
-        ),
-        filtered_pbf_path = config.get_file_path(
-            "snapshot_osm", "residential_american_oceania_filtered_pbf"
-        ),
-    ),
-]
+EXTRACTS = residential_extracts(config)
 
 
 def main() -> None:
@@ -94,8 +58,8 @@ def main() -> None:
     parser.add_argument(
         "--extracts", nargs = "+", default = None,
         metavar = "NAME",
-        help = "subset of extracts to build (default: all four). Only useful "
-        "for debugging — a partial layer under-reports coverage.",
+        help = "subset of extracts to build (default: all configured). Only "
+        "useful for debugging — a partial layer under-reports coverage.",
     )
     parser.add_argument(
         "--keep-intermediates", action = "store_true",

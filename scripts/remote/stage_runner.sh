@@ -21,7 +21,7 @@ source "$env_file"
 
 mkdir -p "$(dirname "$log")"
 conflation=$(python -c \
-    "import yaml; print(yaml.safe_load(open('config.yaml'))['versions']['conflation'])" \
+    "from openpois.config import load_config; print(load_config().get('versions', 'conflation'))" \
     2> /dev/null || echo unknown)
 {
     echo "=== STAGE $stage START $(date -u +%FT%TZ) host=$(hostname)" \

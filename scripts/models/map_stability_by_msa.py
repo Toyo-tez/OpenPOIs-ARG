@@ -59,7 +59,7 @@ os.environ.setdefault("PROJ_LIB", str(Path(sys.prefix) / "share" / "proj"))
 import numpy as np
 import pandas as pd
 import geopandas as gpd
-from config_versioned import Config
+from openpois.config import load_config
 
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
@@ -70,7 +70,7 @@ from matplotlib.cm import ScalarMappable  # noqa: E402
 from pygris.utils import shift_geometry  # noqa: E402
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 CELL_COLS = ["shared_label", "msa_code", "urban_rural"]
 CBSA_FILE = "cb_2023_us_cbsa_500k.shp"

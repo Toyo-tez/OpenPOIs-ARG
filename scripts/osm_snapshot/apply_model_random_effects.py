@@ -39,7 +39,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
-from config_versioned import Config
+from openpois.config import indicators_enabled, load_config
 
 from openpois.conflation.taxonomy import (
     assign_osm_shared_label,
@@ -50,7 +50,7 @@ from openpois.io import indicators
 from openpois.models import reconstruct
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 FILTER_KEYS = config.get("download", "osm", "filter_keys")
 SNAPSHOT_PATH = config.get_file_path("snapshot_osm", "snapshot")
@@ -66,6 +66,7 @@ DELTA_GROUP = config.get(
 ) or "shared_label"
 
 # Census layers for enrichment.
+INDICATORS_ENABLED = indicators_enabled(config)
 CBSA_SHP = config.get_file_path("census_areas", "cbsa_shapefile")
 PLACE_SHP = config.get_file_path("census_areas", "place_shapefile")
 POPULATION_CSV = config.get_file_path("census_areas", "place_population")
@@ -243,9 +244,13 @@ if __name__ == "__main__":
     cache = CurveCache(draws, maps, DELTA_GROUP)
 
     print("Loading Census layers ...")
-    msa_gdf, classified_places = indicators.load_classified_layers(
-        CBSA_SHP, PLACE_SHP, POPULATION_CSV
-    )
+    if INDICATORS_ENABLED:
+        msa_gdf, classified_places = indicators.load_classified_layers(
+            CBSA_SHP, PLACE_SHP, POPULATION_CSV
+        )
+    else:
+        print("Indicators disabled in config; using NO_MSA / rural defaults.")
+        msa_gdf, classified_places = None, None
     osm_crosswalk = load_osm_crosswalk()
     match_radii = load_match_radii()
 

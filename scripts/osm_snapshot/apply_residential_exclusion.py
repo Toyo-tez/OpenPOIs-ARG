@@ -45,14 +45,14 @@ import sys
 from pathlib import Path
 
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.osm.residential import (
     filter_parquet_by_residential,
     load_residential_areas,
 )
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 RESIDENTIAL = config.get(
     "download", "osm", "residential_exclusion", fail_if_none = False,

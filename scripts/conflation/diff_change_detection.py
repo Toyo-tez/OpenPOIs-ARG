@@ -12,7 +12,7 @@ user can verify each shadow match manually.
 Usage:
     python scripts/conflation/diff_change_detection.py \
         --baseline-suffix=baseline --cd-suffix=cd \
-        --output=~/data/openpois/logs/seattle_demoted_pois.csv
+        --output=<logs>/seattle_demoted_pois.csv
 """
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 
 def _suffixed_path(base: Path, suffix: str | None) -> Path:
@@ -47,8 +47,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--output",
-        default = "~/data/openpois/logs/demoted_pois.csv",
-        help = "Output CSV path (~ is expanded).",
+        default = None,
+        help = "Output CSV path (~ is expanded). Defaults to <logs>/demoted_pois.csv.",
     )
     parser.add_argument(
         "--ghosts-path",
@@ -61,7 +61,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     base = config.get_file_path("conflation", "conflated")
 
     baseline_path = _suffixed_path(base, args.baseline_suffix)
@@ -71,7 +71,11 @@ def main() -> None:
         if args.ghosts_path
         else config.get_file_path("ghost_osm", "ghosts")
     )
-    output_path = Path(args.output).expanduser()
+    output_path = (
+        Path(args.output).expanduser()
+        if args.output
+        else config.get_dir_path("logs") / "demoted_pois.csv"
+    )
 
     print(f"Baseline:        {baseline_path}")
     print(f"Change-detect:   {cd_path}")

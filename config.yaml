@@ -1,3 +1,8 @@
+# Active country profile. Use an ISO 3166-1 alpha-2 code; country-specific
+# settings live in countries/<CODE>.yaml and are deep-merged over this file at
+# load time. Change this value (or set OPENPOIS_COUNTRY / make COUNTRY=...).
+country: "AR"
+
 # Versioned directories (used with config.get_dir_path())
 versions:
   osm_data: "20261022"
@@ -230,6 +235,13 @@ download:
     place_shp_name: "cb_2023_us_place_500k.shp"
     population_api_url: "https://api.census.gov/data/2020/dec/pl?get=NAME,P1_001N&for=place:*&in=state:*"
 
+# Optional Census / reference-area enrichment. Country profiles without US
+# Census reference layers set enabled: false; observations and snapshots then
+# carry the constant defaults (msa_code = NO_MSA, urban_rural = rural) and the
+# turnover model's region / urbanicity terms should be disabled too.
+indicators:
+  enabled: true
+
 # Settings for OSM exploratory data analysis
 osm_data:
   tag_key: name
@@ -433,6 +445,9 @@ directories:
   boundary:
     versioned: false
     path: ~/data/openpois/boundary
+  logs:
+    versioned: false
+    path: ~/data/openpois/logs
   census_areas:
     versioned: false
     path: ~/data/openpois/census_areas
@@ -485,10 +500,11 @@ directories:
       overrides: manual_overrides.csv
   # Fixed validation input for the confidence calibration, exported from
   # openpois-validator. Lives in the repo tree but is gitignored: the labels
-  # are the validation moat. Versioned on ``versions.calibration``.
+  # are the validation moat. Versioned on ``versions.calibration``. Override
+  # the location per checkout/country with OPENPOIS_CALIBRATION_DIR.
   calibration:
     versioned: true
-    path: ~/repos/openpois/data/calibration
+    path: "${OPENPOIS_CALIBRATION_DIR:-~/repos/openpois/data/calibration}"
     files:
       validation_rows: validation_rows.parquet
       metadata: metadata.json
@@ -660,6 +676,10 @@ conflation:
   # retired; its keys stay because the HT review, the CV comparator and the
   # evaluation scripts still read them.
   calibration:
+    # Set false for countries without a validation round yet: the pipeline then
+    # copies the change-detected output to conflated.parquet uncalibrated instead
+    # of fitting/exporting/applying curves.
+    enabled: true
     # The production fit: ``make fit_calibration`` (run_bayes_phase1.sh,
     # MODE=mixture) fits each segment separately with arm C and
     # label_noise = fixed_mixture, then ``make export_calibration``
@@ -742,6 +762,20 @@ conflation:
     # ["20260730"].
     pooled_rounds: ["20260730"]
 
+# Settings consumed by scripts/build_site_config.py, which regenerates
+# site/src/country.generated.js before the Vite build. Country profiles override
+# this block so the map opens on the right place with the right geocoder scope.
+site:
+  title: "OpenPOIs"
+  locale: "en-US"
+  timezone: "UTC"
+  initial_center: [-73.9855, 40.758]
+  initial_zoom: 18
+  # Optional [west, south, east, north] extent used to constrain panning.
+  bbox: null
+  # Stadia geocoding country filter, e.g. "US,PR,VI,GU,MP,AS" or "AR".
+  geocoder_country: "US,PR,VI,GU,MP,AS"
+
 # Settings for publishing snapshots to Source Cooperative
 # (https://source.coop/henryspatialanalysis/openpois). Source Coop is
 # S3-compatible: uploads go to the literal bucket name below with keys
@@ -753,10 +787,10 @@ publish:
   # (bucket us-west-2.opendata.source.coop, keys henryspatialanalysis/openpois/)
   # no longer authenticates with proxy-issued credentials.
   endpoint_url: "https://data.source.coop"
-  bucket: "henryspatialanalysis"
+  bucket: "${OPENPOIS_SOURCE_COOP_ACCOUNT:-henryspatialanalysis}"
   repo_prefix: "openpois"
-  public_base_url: "https://data.source.coop/henryspatialanalysis/openpois"
-  credentials_file: "~/repos/openpois/.env.json"
+  public_base_url: "https://data.source.coop/${OPENPOIS_SOURCE_COOP_ACCOUNT:-henryspatialanalysis}/openpois"
+  credentials_file: "${OPENPOIS_CREDENTIALS_FILE:-~/repos/openpois/.env.json}"
   geohash_precision_sort: 6       # ~0.6 km x 1.2 km; within-partition sort key for spatial row-group pruning
   # Values surfaced in the per-version README. Set each round until the
   # pipeline captures them automatically — see .claude/TODO.md.

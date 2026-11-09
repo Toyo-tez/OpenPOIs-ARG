@@ -25,8 +25,8 @@ Config keys used (config.yaml):
     conflation.test_bbox                   — small bbox used with --test flag
 
 Usage:
-    python scripts/conflation/conflate.py           # full CONUS run
-    python scripts/conflation/conflate.py --test    # Seattle test bbox
+    python scripts/conflation/conflate.py           # full country run
+    python scripts/conflation/conflate.py --test    # conflation.test_bbox
 
 Output file:
     conflated.parquet — GeoParquet with all OSM + Overture POIs, columns:
@@ -44,7 +44,7 @@ from pathlib import Path
 import geopandas as gpd
 import numpy as np
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 from shapely.geometry import box
 
 from openpois.conflation.chunking import extract_centroids_lonlat
@@ -127,7 +127,7 @@ def log_rss(label: str) -> None:
 # Configuration
 # -----------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 OSM_PATH = config.get_file_path("snapshot_osm", "rated_snapshot")
 OVERTURE_PATH = config.get_file_path("snapshot_overture", "snapshot")
@@ -340,8 +340,8 @@ if __name__ == "__main__":
         "--test",
         action = "store_true",
         help = (
-            "Filter both datasets to a small bbox "
-            "(Seattle area) for testing."
+            "Filter both datasets to the configured "
+            "conflation.test_bbox for testing."
         ),
     )
     parser.add_argument(
@@ -677,10 +677,11 @@ if __name__ == "__main__":
             "comparability falls back to websites only; re-pull to enable)"
         )
 
-    # Drop columns only needed for taxonomy assignment
+    # Drop columns only needed for taxonomy assignment. Keep osm_type: the
+    # matching phase builds source ids ("n123"/"w123") from it.
     for col in [
         *FILTER_KEYS,
-        "osm_type", "brand:wikidata", "website", "phone",
+        "brand:wikidata", "website", "phone",
         "overture_websites", "overture_phones", "brand_wikidata",
     ]:
         if col in osm_gdf.columns:

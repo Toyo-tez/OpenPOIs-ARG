@@ -32,7 +32,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from config_versioned import Config
+from openpois.config import find_config_path, load_config
 
 from openpois.io.credentials import load_source_coop_credentials
 from openpois.io.source_coop import (
@@ -44,7 +44,7 @@ from openpois.io.source_coop import (
 )
 from openpois.publish.build_readme import build_top_readme
 
-CONFIG_PATH = Path("~/repos/openpois/config.yaml").expanduser()
+CONFIG_PATH = find_config_path()
 MAX_COPY_BYTES = 5 * 1024 ** 3
 ID_FILES = ("id_registry.parquet", "id_changes.parquet", "id_migration_v0_v1.parquet")
 POINTER_MARK = "<!-- stable-id-v1 -->"
@@ -89,8 +89,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description = __doc__)
     parser.add_argument("--release", required = True, help = "YYYY-MM-DD")
     parser.add_argument(
-        "--work-dir", type = Path,
-        default = Path("~/data/openpois/conflation_backfill").expanduser(),
+        "--work-dir", type = Path, default = None,
+        help = ("Download/rewrite root (default: "
+                "<data_root>/conflation_backfill)."),
     )
     parser.add_argument("--conflated-pmtiles", type = Path, default = None)
     parser.add_argument(
@@ -103,9 +104,13 @@ def main() -> None:
     parser.add_argument("--dry-run", action = "store_true")
     args = parser.parse_args()
 
-    config = Config(str(CONFIG_PATH))
+    config = load_config(CONFIG_PATH)
     bucket = config.get("publish", "bucket")
     repo = config.get("publish", "repo_prefix").rstrip("/")
+    if args.work_dir is None:
+        args.work_dir = (
+            config.get_dir_path("conflation").parent.parent / "conflation_backfill"
+        )
     creds_file = Path(config.get("publish", "credentials_file")).expanduser()
     client = make_client(load_source_coop_credentials(creds_file))
 

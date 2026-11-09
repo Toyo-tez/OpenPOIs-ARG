@@ -4,35 +4,26 @@
 #   -------------------------------------------------------------
 
 """
-This module provides a single source of truth for the spatial extent used by
-POI snapshot downloads: the 50 US states + DC + the 5 inhabited US
-territories (Puerto Rico, US Virgin Islands, Guam, Northern Mariana Islands,
-American Samoa).
+Country boundary download, filtering, dissolve and bbox helpers.
 
-It is broken into the following functions:
+The generic functions drive any country profile:
 
-- download_us_pr_boundary: Downloads and unzips the Census cartographic
-    boundary state shapefile. Skips the download if the file already exists.
-- load_us_pr_boundary: Reads the shapefile and filters to the 56 US
-    statistical areas (50 states + DC + 5 territories).
-- us_pr_unary_polygon: Dissolves the filtered areas into a single
+- download_boundary: Downloads (or locates) a zipped shapefile or a
+    single-file vector boundary (GeoJSON, GeoPackage, …).
+- load_boundary: Reads the vector file and optionally filters it to one
+    country (e.g. Natural Earth ``ADM0_A3``).
+- boundary_unary_polygon: Dissolves the filtered areas into a single
     (multi)polygon and applies an outward buffer to include near-coastal
-    POIs. Internal borders disappear on dissolve, so the buffer only
-    expands the coastline (plus tiny strips of the Canada/Mexico land
-    border, which contain effectively no POIs).
-- us_pr_bboxes: Returns coarse bounding boxes covering the buffered
-    polygon. Splits at longitude 0 into a negative-longitude bbox (CONUS,
-    AK mainland, HI, PR, USVI, American Samoa) and a positive-longitude
-    bbox (Alaskan Near Islands ~+172 E, Guam ~+144 E, Northern Mariana
-    Islands ~+145 E) so callers that can't filter on a polygon directly
-    (e.g., DuckDB predicate pushdown on Overture's `bbox` struct) can
-    still use bounding-box prefilters without missing the western-Pacific
-    territories or the Aleutian Near Islands.
+    POIs. Internal borders disappear on dissolve.
+- boundary_bboxes: Returns coarse bounding boxes covering the buffered
+    polygon, split at longitude 0 so antimeridian-crossing countries get one
+    bbox per side.
+- get_boundary: End-to-end download → filter → dissolve → bbox.
 
-The Census 1:5M cartographic boundary file is used because it has clean
-``STUSPS`` codes, includes all 5 inhabited territories, and is small
-(~1.3 MB zipped). The 1:20M variant is too aggressive a generalisation to
-include territories.
+The older ``*_us_pr_*`` functions below are thin US + territories wrappers
+kept for backwards compatibility; they filter the Census cartographic state
+shapefile to the 50 states + DC + 5 inhabited territories (Puerto Rico, US
+Virgin Islands, Guam, Northern Mariana Islands, American Samoa).
 """
 from __future__ import annotations
 
@@ -41,6 +32,7 @@ from pathlib import Path
 
 import geopandas as gpd
 import requests
+from shapely.geometry import MultiPolygon, Polygon
 
 # EPSG:6933 = World Equal-Area Cylindrical. Preserves area globally with
 # <1% distortion at latitudes relevant to the US + territories, so buffering by N
@@ -57,6 +49,202 @@ _US_STATE_CODES = frozenset({
     "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA",
     "WV", "WI", "WY", "PR", "VI", "GU", "MP", "AS",
 })
+
+
+# -----------------------------------------------------------------------------
+# Generic country boundary
+# -----------------------------------------------------------------------------
+
+
+def download_boundary(
+    source_url: str,
+    cache_dir: Path,
+    cache_name: str | None = None,
+    zip_name: str | None = None,
+    shp_name: str | None = None,
+    overwrite: bool = False,
+    timeout: int = 120,
+) -> Path:
+    """Download (or locate) a country boundary file.
+
+    Supports both zipped shapefiles and single-file formats (GeoJSON,
+    GeoPackage, FlatGeobuf, …).  A local ``source_url`` path is used directly.
+
+    Args:
+        source_url: HTTP(S) URL or local path.
+        cache_dir: Directory for the cached download.
+        cache_name: Output filename for a non-zip source.  Defaults to the
+            URL basename.
+        zip_name: Output filename for a zip archive.  Defaults to the URL
+            basename.
+        shp_name: Expected ``.shp`` inside the zip.  If omitted, the first
+            ``.shp`` in the archive is used.
+        overwrite: Re-download even if the cached file exists.
+        timeout: Per-request timeout in seconds.
+
+    Returns:
+        Path to the cached vector file (``.shp`` for zip sources).
+    """
+    cache_dir = Path(cache_dir)
+    cache_dir.mkdir(parents = True, exist_ok = True)
+
+    local = Path(source_url).expanduser()
+    if local.exists():
+        return local
+
+    is_zip = (zip_name is not None) or str(source_url).lower().endswith(".zip")
+    target_name = (zip_name if is_zip else cache_name) or Path(
+        str(source_url).split("?")[0]
+    ).name
+    target_path = cache_dir / target_name
+
+    if is_zip:
+        expected_shp = cache_dir / shp_name if shp_name else None
+        if expected_shp and expected_shp.exists() and not overwrite:
+            return expected_shp
+        if target_path.exists() and not overwrite and not shp_name:
+            with zipfile.ZipFile(target_path) as zf:
+                members = [m for m in zf.namelist() if m.lower().endswith(".shp")]
+            if members:
+                return cache_dir / members[0]
+    elif target_path.exists() and not overwrite:
+        return target_path
+
+    print(f"Downloading boundary from {source_url}...")
+    resp = requests.get(source_url, stream = True, timeout = timeout)
+    resp.raise_for_status()
+    with open(target_path, "wb") as handle:
+        for chunk in resp.iter_content(chunk_size = 1024 * 1024):
+            handle.write(chunk)
+
+    if not is_zip:
+        return target_path
+
+    print(f"Unzipping {target_path} to {cache_dir}...")
+    with zipfile.ZipFile(target_path) as zf:
+        zf.extractall(cache_dir)
+        members = [m for m in zf.namelist() if m.lower().endswith(".shp")]
+
+    if shp_name:
+        shp_path = cache_dir / shp_name
+        if not shp_path.exists():
+            raise FileNotFoundError(
+                f"Expected shapefile {shp_path} not found after unzipping "
+                f"{target_path}. Contents: {list(cache_dir.iterdir())}"
+            )
+        return shp_path
+    if not members:
+        raise FileNotFoundError(
+            f"No .shp found in {target_path}. Contents: {list(cache_dir.iterdir())}"
+        )
+    return cache_dir / members[0]
+
+
+def load_boundary(
+    path: Path,
+    filter_field: str | None = None,
+    filter_values: list | tuple | set | None = None,
+) -> gpd.GeoDataFrame:
+    """Read a boundary vector file and optionally filter it to a country.
+
+    Args:
+        path: Vector file readable by GeoPandas (GeoJSON, shapefile, …).
+        filter_field: Attribute column to filter on (e.g. ``ADM0_A3``).
+        filter_values: Allowed values for ``filter_field``.
+
+    Returns:
+        GeoDataFrame in EPSG:4326.
+
+    Raises:
+        ValueError: If a filter is configured but matches no rows.
+    """
+    gdf = gpd.read_file(path)
+    if gdf.crs is None or gdf.crs.to_epsg() != 4326:
+        gdf = gdf.to_crs("EPSG:4326")
+    if filter_field and filter_values:
+        allowed = {str(value) for value in filter_values}
+        gdf = gdf.loc[gdf[filter_field].astype(str).isin(allowed)].copy()
+        if gdf.empty:
+            raise ValueError(
+                f"No boundary rows matched {filter_field} in {sorted(allowed)} "
+                f"in {path}; check the filter in the country profile."
+            )
+    return gdf.reset_index(drop = True)
+
+
+def boundary_unary_polygon(
+    boundary_gdf: gpd.GeoDataFrame,
+    coastline_buffer_m: float = 100.0,
+    equal_area_crs: str = _EQUAL_AREA_CRS,
+) -> gpd.GeoDataFrame:
+    """Dissolve a boundary layer into one (multi)polygon and buffer it outward."""
+    dissolved = boundary_gdf.dissolve()[["geometry"]]
+    if coastline_buffer_m > 0:
+        dissolved = dissolved.to_crs(equal_area_crs)
+        dissolved["geometry"] = dissolved.buffer(coastline_buffer_m)
+        dissolved = dissolved.to_crs("EPSG:4326")
+    return dissolved.reset_index(drop = True)
+
+
+def _split_parts(geometry) -> list:
+    if isinstance(geometry, (MultiPolygon, Polygon)) or hasattr(geometry, "geoms"):
+        return list(geometry.geoms)
+    return [geometry]
+
+
+def boundary_bboxes(polygon_gdf: gpd.GeoDataFrame) -> list[dict]:
+    """Return coarse bboxes covering a dissolved boundary polygon.
+
+    Parts are split by centroid longitude at 0 so antimeridian-crossing
+    countries (e.g. the US with its western Pacific territories) get one bbox
+    per side instead of a useless (-180, 180) extent.
+    """
+    geom = polygon_gdf.geometry.iloc[0]
+    neg_parts, pos_parts = [], []
+    for part in _split_parts(geom):
+        (neg_parts if part.centroid.x < 0 else pos_parts).append(part)
+
+    bboxes: list[dict] = []
+    for group in (neg_parts, pos_parts):
+        if not group:
+            continue
+        bboxes.append({
+            "xmin": min(p.bounds[0] for p in group),
+            "ymin": min(p.bounds[1] for p in group),
+            "xmax": max(p.bounds[2] for p in group),
+            "ymax": max(p.bounds[3] for p in group),
+        })
+    return bboxes
+
+
+def get_boundary(
+    source_url: str,
+    cache_dir: Path,
+    coastline_buffer_m: float = 100.0,
+    cache_name: str | None = None,
+    zip_name: str | None = None,
+    shp_name: str | None = None,
+    filter_field: str | None = None,
+    filter_values: list | tuple | set | None = None,
+) -> tuple[gpd.GeoDataFrame, list[dict]]:
+    """Download/load, filter, dissolve and bbox a country boundary."""
+    path = download_boundary(
+        source_url = source_url,
+        cache_dir = cache_dir,
+        cache_name = cache_name,
+        zip_name = zip_name,
+        shp_name = shp_name,
+    )
+    boundary_gdf = load_boundary(
+        path,
+        filter_field = filter_field,
+        filter_values = filter_values,
+    )
+    polygon_gdf = boundary_unary_polygon(
+        boundary_gdf,
+        coastline_buffer_m = coastline_buffer_m,
+    )
+    return polygon_gdf, boundary_bboxes(polygon_gdf)
 
 
 # -----------------------------------------------------------------------------
@@ -92,31 +280,13 @@ def download_us_pr_boundary(
     Raises:
         requests.HTTPError: If the download fails.
     """
-    cache_dir = Path(cache_dir)
-    cache_dir.mkdir(parents = True, exist_ok = True)
-    zip_path = cache_dir / zip_name
-    shp_path = cache_dir / shp_name
-
-    if shp_path.exists() and not overwrite:
-        return shp_path
-
-    print(f"Downloading US + territories boundary from {source_url}...")
-    resp = requests.get(source_url, stream = True, timeout = 120)
-    resp.raise_for_status()
-    with open(zip_path, "wb") as f:
-        for chunk in resp.iter_content(chunk_size = 1024 * 1024):
-            f.write(chunk)
-
-    print(f"Unzipping {zip_path} to {cache_dir}...")
-    with zipfile.ZipFile(zip_path) as zf:
-        zf.extractall(cache_dir)
-
-    if not shp_path.exists():
-        raise FileNotFoundError(
-            f"Expected shapefile {shp_path} not found after unzipping "
-            f"{zip_path}. Contents: {list(cache_dir.iterdir())}"
-        )
-    return shp_path
+    return download_boundary(
+        source_url = source_url,
+        cache_dir = cache_dir,
+        zip_name = zip_name,
+        shp_name = shp_name,
+        overwrite = overwrite,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -144,9 +314,7 @@ def load_us_pr_boundary(
             the source file is wrong or corrupted, e.g. the 1:20M variant
             that omits territories).
     """
-    gdf = gpd.read_file(shp_path)
-    if gdf.crs is None or gdf.crs.to_epsg() != 4326:
-        gdf = gdf.to_crs("EPSG:4326")
+    gdf = load_boundary(shp_path)
     gdf = gdf.loc[gdf["STUSPS"].isin(_US_STATE_CODES)].copy()
     if len(gdf) != len(_US_STATE_CODES):
         raise ValueError(
@@ -185,12 +353,10 @@ def us_pr_unary_polygon(
         Single-row GeoDataFrame in EPSG:4326 with a single ``geometry`` column.
     """
     states = load_us_pr_boundary(shp_path = shp_path)
-    dissolved = states.dissolve()[["geometry"]]
-    if coastline_buffer_m > 0:
-        dissolved = dissolved.to_crs(_EQUAL_AREA_CRS)
-        dissolved["geometry"] = dissolved.buffer(coastline_buffer_m)
-        dissolved = dissolved.to_crs("EPSG:4326")
-    return dissolved.reset_index(drop = True)
+    return boundary_unary_polygon(
+        states,
+        coastline_buffer_m = coastline_buffer_m,
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -234,39 +400,7 @@ def us_pr_bboxes(
         shp_path = shp_path,
         coastline_buffer_m = coastline_buffer_m,
     )
-    geom = polygon_gdf.geometry.iloc[0]
-
-    # Split the multipolygon at longitude 0: negative-x parts go into the
-    # "main" bbox (CONUS, AK mainland, HI, PR), positive-x parts into the
-    # "Near Islands" bbox.
-    neg_parts = []
-    pos_parts = []
-    parts = geom.geoms if hasattr(geom, "geoms") else [geom]
-    for part in parts:
-        # A single polygon's .bounds is (minx, miny, maxx, maxy). We split on
-        # the x-coordinate of the polygon's centroid; that cleanly separates
-        # the eastern Aleutians (negative longitudes) from the Near Islands
-        # (positive longitudes) without needing to clip at the antimeridian.
-        if part.centroid.x < 0:
-            neg_parts.append(part)
-        else:
-            pos_parts.append(part)
-
-    bboxes: list[dict] = []
-    for group in (neg_parts, pos_parts):
-        if not group:
-            continue
-        xmins = [p.bounds[0] for p in group]
-        ymins = [p.bounds[1] for p in group]
-        xmaxs = [p.bounds[2] for p in group]
-        ymaxs = [p.bounds[3] for p in group]
-        bboxes.append({
-            "xmin": min(xmins),
-            "ymin": min(ymins),
-            "xmax": max(xmaxs),
-            "ymax": max(ymaxs),
-        })
-    return bboxes
+    return boundary_bboxes(polygon_gdf)
 
 
 # -----------------------------------------------------------------------------
@@ -296,18 +430,12 @@ def get_us_pr_boundary(
         Tuple of (single-row buffered polygon GeoDataFrame in EPSG:4326,
         list of coarse bbox dicts).
     """
-    shp_path = download_us_pr_boundary(
+    return get_boundary(
         source_url = source_url,
         cache_dir = cache_dir,
+        coastline_buffer_m = coastline_buffer_m,
         zip_name = zip_name,
         shp_name = shp_name,
+        filter_field = "STUSPS",
+        filter_values = sorted(_US_STATE_CODES),
     )
-    polygon_gdf = us_pr_unary_polygon(
-        shp_path = shp_path,
-        coastline_buffer_m = coastline_buffer_m,
-    )
-    bboxes = us_pr_bboxes(
-        shp_path = shp_path,
-        coastline_buffer_m = coastline_buffer_m,
-    )
-    return polygon_gdf, bboxes

@@ -6,23 +6,42 @@ import {
   OSM_KEYS,
   OVERTURE_L0S,
 } from './taxonomy.generated.js'
+import {
+  COUNTRY,
+  COUNTRY_CODE,
+  COUNTRY_NAME,
+  SITE_TITLE,
+  SITE_LOCALE,
+  SITE_TIMEZONE,
+  INITIAL_CENTER,
+  INITIAL_ZOOM,
+  MAP_BBOX,
+  GEOCODER_COUNTRY,
+  OSM_PMTILES_URL,
+  CONFLATED_PMTILES_URL,
+  OVERTURE_PMTILES_URL,
+  OVERTURE_CATEGORIES_URL,
+} from './country.generated.js'
 
-// Source Cooperative URLs — PMTiles archives read via ol-pmtiles. Bump the
-// version folder each refresh to match `versions.source_coop` in config.yaml.
-export const OSM_PMTILES_URL =
-  'https://data.source.coop/henryspatialanalysis/openpois/2026-10-22-v1/osm-pmtiles/osm.pmtiles'
-
-export const CONFLATED_PMTILES_URL =
-  'https://data.source.coop/henryspatialanalysis/openpois/2026-10-22-v1/conflated-pmtiles/conflated.pmtiles'
-
-// Overture PMTiles built from our monthly Overture snapshot, plus the
-// filter-panel category counts published beside it. Self-hosted because
-// tiles.overturemaps.org blocks openpois.org referers.
-export const OVERTURE_PMTILES_URL =
-  'https://data.source.coop/henryspatialanalysis/openpois/2026-10-22-v1/overture-pmtiles/overture.pmtiles'
-
-export const OVERTURE_CATEGORIES_URL =
-  'https://data.source.coop/henryspatialanalysis/openpois/2026-10-22-v1/overture-pmtiles/overture_categories.json'
+// Country-specific values are generated from config.yaml + countries/<ISO>.yaml
+// by scripts/build_site_config.py. Re-export them so components keep importing
+// from this one module.
+export {
+  COUNTRY,
+  COUNTRY_CODE,
+  COUNTRY_NAME,
+  SITE_TITLE,
+  SITE_LOCALE,
+  SITE_TIMEZONE,
+  INITIAL_CENTER,
+  INITIAL_ZOOM,
+  MAP_BBOX,
+  GEOCODER_COUNTRY,
+  OSM_PMTILES_URL,
+  CONFLATED_PMTILES_URL,
+  OVERTURE_PMTILES_URL,
+  OVERTURE_CATEGORIES_URL,
+}
 
 // Confidence color ramp (conf_mean 0-1, 1 = stable)
 export const COLORS = {
@@ -101,7 +120,3 @@ export const MIN_ZOOM = 10
 // Stadia Maps Geocoding
 export const STADIA_GEOCODING_URL =
   'https://api.stadiamaps.com/geocoding/v1/search'
-
-// Initial map view — Times Square (fallback if geolocation is denied)
-export const INITIAL_CENTER = [-73.9855, 40.758]
-export const INITIAL_ZOOM = 18

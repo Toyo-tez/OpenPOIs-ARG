@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import sys
 
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.io.osm_history_incremental import (
     check_history_vs_snapshot,
@@ -31,7 +31,7 @@ MIN_MATCH_RATE = 0.995
 
 
 def main() -> int:
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     osm_data_dir = config.get_dir_path("osm_data")
     snapshot_path = config.get_file_path("snapshot_osm", "snapshot")
     coverage = read_coverage(osm_data_dir)

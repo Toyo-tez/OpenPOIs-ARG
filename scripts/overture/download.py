@@ -1,12 +1,12 @@
 """
-Download the current US + territories Overture Maps Places snapshot as a
-GeoParquet file.
+Download the current Overture Maps Places snapshot for the configured country
+as a GeoParquet file.
 
 Queries Overture Maps GeoParquet files on public S3 using DuckDB's httpfs and
 spatial extensions. Iterates the release's ``part-*.parquet`` files, writing a
 bounded-memory DuckDB COPY per part into a ``.parts/<release>/`` directory.
 Once every part is present, a single DuckDB COPY applies the exact
-US + territories polygon filter and writes the final GeoParquet without
+configured-boundary polygon filter and writes the final GeoParquet without
 materializing rows in Python. Interrupted runs resume by skipping parts whose
 intermediates already exist. No authentication required — Overture Maps data
 is publicly accessible.
@@ -22,28 +22,28 @@ Config keys used (config.yaml):
     download.overture.duckdb.memory_limit    — per-connection DuckDB memory cap
     download.overture.duckdb.threads         — per-connection DuckDB thread count
     download.overture.duckdb.workers         — parallel part downloads (must be 1)
-    download.general.boundary.source_url     — Census state-boundary zip URL
+    download.general.boundary.source_url     — boundary zip/GeoJSON URL
     download.general.boundary.coastline_buffer_m — outward coastline buffer (m)
     directories.boundary                     — cache directory for boundary file
     directories.snapshot_overture            — output directory
 
 Output file:
-    overture_snapshot.parquet — GeoParquet with US + territories POIs
+    overture_snapshot.parquet — GeoParquet with the country's POIs
         Columns: overture_id, overture_name, taxonomy_l0, taxonomy_l1,
         taxonomy_l2, brand_name, confidence, geometry, source
 """
 import shutil
 
 import pyarrow.parquet as pq
-from config_versioned import Config
-from openpois.io.boundary import get_us_pr_boundary
+from openpois.config import load_config
+from openpois.io.boundary import get_boundary
 from openpois.io.overture import download_overture_snapshot
 
 # -----------------------------------------------------------------------------
 # Configuration constants
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 # None = auto-detect latest
 RELEASE_DATE = config.get("download", "overture", "release_date", fail_if_none=False)
@@ -63,6 +63,21 @@ BOUNDARY_URL = config.get("download", "general", "boundary", "source_url")
 COASTLINE_BUFFER_M = config.get(
     "download", "general", "boundary", "coastline_buffer_m"
 )
+BOUNDARY_CACHE_NAME = config.get(
+    "download", "general", "boundary", "cache_name", fail_if_none = False
+)
+BOUNDARY_ZIP_NAME = config.get(
+    "download", "general", "boundary", "zip_name", fail_if_none = False
+)
+BOUNDARY_SHP_NAME = config.get(
+    "download", "general", "boundary", "shp_name", fail_if_none = False
+)
+BOUNDARY_FILTER_FIELD = config.get(
+    "download", "general", "boundary", "filter_field", fail_if_none = False
+)
+BOUNDARY_FILTER_VALUES = config.get(
+    "download", "general", "boundary", "filter_values", fail_if_none = False
+)
 BOUNDARY_DIR = config.get_dir_path("boundary")
 SAVE_DIR = config.get_dir_path("snapshot_overture")
 
@@ -76,10 +91,15 @@ OUTPUT_PATH = config.get_file_path("snapshot_overture", "snapshot")
 # -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    boundary_gdf, coarse_bboxes = get_us_pr_boundary(
+    boundary_gdf, coarse_bboxes = get_boundary(
         source_url = BOUNDARY_URL,
         cache_dir = BOUNDARY_DIR,
         coastline_buffer_m = COASTLINE_BUFFER_M,
+        cache_name = BOUNDARY_CACHE_NAME,
+        zip_name = BOUNDARY_ZIP_NAME,
+        shp_name = BOUNDARY_SHP_NAME,
+        filter_field = BOUNDARY_FILTER_FIELD,
+        filter_values = BOUNDARY_FILTER_VALUES,
     )
     output_path = download_overture_snapshot(
         output_path = OUTPUT_PATH,

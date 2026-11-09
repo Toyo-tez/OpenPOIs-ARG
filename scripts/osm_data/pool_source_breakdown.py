@@ -12,7 +12,7 @@ A single POI can carry several contributing datasets, so the per-dataset shares
 sum to >100%. The `Overture` pseudo-dataset (a property/confidence override the
 foundation adds to nearly every record) is reported but flagged separately.
 
-Outputs land under ~/data/openpois/logs/ as a CSV + printed summary.
+Outputs land under the configured ``logs`` directory as a CSV + printed summary.
 """
 from __future__ import annotations
 
@@ -20,53 +20,25 @@ from pathlib import Path
 
 import duckdb
 
-from openpois.io.boundary import us_pr_bboxes
+from openpois.config import load_config
+from openpois.io.boundary import get_boundary
 from openpois.io.overture import (
     _build_bbox_predicate,
     _build_taxonomy_predicate,
     _list_overture_part_keys,
 )
 
-# --- Pinned inputs (match config.yaml for version 20260521) -------------------
-RELEASE_DATE = "2026-05-20.0"
-BUCKET = "overturemaps-us-west-2"
-S3_REGION = "us-west-2"
-CONFLATED = Path(
-    "/home/nathenry/data/openpois/conflation/20260521/conflated.parquet"
-)
-BOUNDARY_SHP = Path(
-    "/home/nathenry/data/openpois/boundary/cb_2023_us_state_5m.shp"
-)
-TAXONOMY_ALLOWLIST = [
-    ["food_and_drink", None],
-    ["shopping", None],
-    ["arts_and_entertainment", None],
-    ["sports_and_recreation", None],
-    ["health_care", None],
-    ["lodging", None],
-    ["cultural_and_historic", None],
-    ["education", None],
-    ["lifestyle_services", "personal_or_beauty_service"],
-    ["lifestyle_services", "wellness_service"],
-    ["lifestyle_services", "animal_or_pet_service"],
-    ["lifestyle_services", "beauty_service"],
-    ["lifestyle_services", "food_service"],
-    ["services_and_business", "financial_service"],
-    ["services_and_business", "legal_service"],
-    ["services_and_business", "professional_service"],
-    ["services_and_business", "real_estate_service"],
-    ["services_and_business", "home_service"],
-    ["services_and_business", "family_service"],
-    ["community_and_government", "social_or_community_service"],
-    ["community_and_government", "government_office"],
-    ["community_and_government", "civic_organization"],
-    ["community_and_government", "public_facility"],
-    ["community_and_government", "public_safety_service"],
-    ["travel_and_transportation", "fueling_station"],
-    ["travel_and_transportation", "vehicle_service"],
-]
+# --- Inputs (resolved from config.yaml + the active country profile) ----------
+config = load_config()
 
-OUT_DIR = Path("/home/nathenry/data/openpois/logs")
+RELEASE_DATE = config.get("download", "overture", "release_date")
+BUCKET = config.get("download", "overture", "s3_bucket")
+S3_REGION = config.get("download", "overture", "s3_region")
+CONFLATED = config.get_file_path("conflation", "conflated")
+TAXONOMY_ALLOWLIST = config.get("download", "overture", "taxonomy_allowlist")
+BOUNDARY_CFG = config.get("download", "general", "boundary")
+
+OUT_DIR = config.get_dir_path("logs")
 POOL_IDS = OUT_DIR / "pool_overture_ids.parquet"
 PAIRS = OUT_DIR / "pool_source_pairs.parquet"
 RESULT_CSV = OUT_DIR / "pool_source_breakdown.csv"
@@ -88,7 +60,16 @@ def main() -> None:
     temp_dir = OUT_DIR / "_duckdb_tmp"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    bbox_pred = _build_bbox_predicate(us_pr_bboxes(BOUNDARY_SHP))
+    bbox_pred = _build_bbox_predicate(get_boundary(
+        source_url = BOUNDARY_CFG["source_url"],
+        cache_dir = config.get_dir_path("boundary"),
+        coastline_buffer_m = BOUNDARY_CFG.get("coastline_buffer_m", 100),
+        cache_name = BOUNDARY_CFG.get("cache_name"),
+        zip_name = BOUNDARY_CFG.get("zip_name"),
+        shp_name = BOUNDARY_CFG.get("shp_name"),
+        filter_field = BOUNDARY_CFG.get("filter_field"),
+        filter_values = BOUNDARY_CFG.get("filter_values"),
+    )[1])
     tax_pred = _build_taxonomy_predicate(TAXONOMY_ALLOWLIST)
 
     # 1. Export the pool's overture_ids (the exact set of Overture-derived POIs

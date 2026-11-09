@@ -37,7 +37,7 @@ Output files (in osm_data/viz/):
 
 import numpy as np
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
@@ -51,7 +51,7 @@ from openpois.osm.change_plots import (  # noqa: E402
 # Configuration constants
 # ----------------------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 SAVE_DIR = config.get_dir_path("osm_data")
 OBSERVATIONS_PATH = config.get_file_path("osm_data", "osm_observations")

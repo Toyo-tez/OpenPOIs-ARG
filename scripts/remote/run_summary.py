@@ -7,8 +7,8 @@ Runs on the remote pipeline host after each batch of stages
 (`openpois-remote.sh summary`), and is pulled back with the tier-1 results.
 
 Inputs:
-    Stage logs written by scripts/remote/stage_runner.sh under
-    ~/data/openpois/logs/. A log belongs to this run when its START line carries
+    Stage logs written by scripts/remote/stage_runner.sh under the configured
+    logs directory. A log belongs to this run when its START line carries
     `conflation=<versions.conflation>`. `/usr/bin/time -v` supplies the
     "Elapsed (wall clock) time" and "Maximum resident set size" lines.
     Parquet footers (row counts only; no data is read) for the current version and
@@ -28,10 +28,10 @@ from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 
-config = Config("~/repos/openpois/config.yaml")
-LOG_DIR = Path("~/data/openpois/logs").expanduser()
+config = load_config()
+LOG_DIR = config.get_dir_path("logs")
 
 # (label, config directory key, file name) for the row-count table.
 COUNTED_FILES = [

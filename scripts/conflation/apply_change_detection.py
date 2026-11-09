@@ -30,7 +30,7 @@ import argparse
 import time
 from pathlib import Path
 
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation.change_detection import apply_shadow_match
 
@@ -107,7 +107,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
 
     conflated_base = config.get_file_path("conflation", "conflated")
     baseline_path = _suffixed_path(

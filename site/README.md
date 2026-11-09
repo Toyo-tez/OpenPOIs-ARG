@@ -17,11 +17,13 @@ display-label maps in `src/constants.js` are hand-maintained.
 
 ### PMTiles URLs
 
-Public data is hosted on Source Cooperative. When a new version is
-published, bump the URLs in `src/constants.js`:
+Public data is hosted on Source Cooperative. The URLs are generated into
+`src/country.generated.js` by `scripts/build_site_config.py` from
+`config.yaml` + the selected country profile:
 
-- `OSM_PMTILES_URL` and `CONFLATED_PMTILES_URL` — version folder matches
-  `versions.source_coop` in `config.yaml`
-- `OVERTURE_PMTILES_URL` — bump on each monthly Overture release
+- base: `publish.public_base_url`
+- version folder: `versions.source_coop`
+- Overture release: `download.overture.release_date`
 
-Each URL is independent; OSM and conflated versions may differ.
+Bump those config values for a new release; `make site_config`,
+`make site_dev`, and `make site_build` regenerate the module automatically.

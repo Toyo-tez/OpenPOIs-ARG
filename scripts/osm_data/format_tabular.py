@@ -60,7 +60,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from config_versioned import Config
+from openpois.config import indicators_enabled, load_config
 
 from openpois.conflation.taxonomy import (
     assign_osm_shared_label,
@@ -76,7 +76,7 @@ from openpois.osm.format_observations import format_observations_window
 # Configuration constants
 # ----------------------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 SAVE_DIR = config.get_dir_path("osm_data")
 OSM_KEYS = config.get("download", "osm", "filter_keys")
@@ -97,6 +97,7 @@ RAW_PATH = SAVE_DIR / "osm_observations_raw.parquet"
 SNAPSHOT_PATH = config.get_file_path("snapshot_osm", "snapshot")
 
 # Census reference areas (downloaded + cached on first run).
+INDICATORS_ENABLED = indicators_enabled(config)
 CENSUS_DIR = config.get_dir_path("census_areas")
 CBSA_URL = config.get("download", "census_areas", "cbsa_url")
 PLACE_URL = config.get("download", "census_areas", "place_url")
@@ -117,7 +118,14 @@ BATCH_ROWS = 200_000
 
 
 def ensure_census_layers():
-    """Download (if needed) and load MSAs + classified places."""
+    """Download (if needed) and load MSAs + classified places.
+
+    Returns ``(None, None)`` when ``indicators.enabled`` is false in the active
+    country profile; callers then fall back to the default indicator values.
+    """
+    if not INDICATORS_ENABLED:
+        print("Indicators disabled in config; using NO_MSA / rural defaults.")
+        return None, None
     census_areas.download_census_zip(CBSA_URL, CENSUS_DIR, CBSA_SHP_NAME)
     census_areas.download_census_zip(PLACE_URL, CENSUS_DIR, PLACE_SHP_NAME)
     census_areas.fetch_place_population(
@@ -136,6 +144,10 @@ def build_element_indicator_map(msa_gdf, classified_places_gdf) -> pd.DataFrame:
         ).fetch_df()
     finally:
         con.close()
+    if not INDICATORS_ENABLED:
+        elements["msa_code"] = indicators.NO_MSA
+        elements["urban_rural"] = indicators.RURAL
+        return elements
     print(f"Locating {len(elements):,} distinct elements for indicators ...")
     return indicators.element_indicator_map(
         elements,

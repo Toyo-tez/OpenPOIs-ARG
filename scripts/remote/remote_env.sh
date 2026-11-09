@@ -8,7 +8,8 @@
 
 set -o pipefail
 
-OPENPOIS_REPO=~/efs-mount/repos/OpenPOIs
+OPENPOIS_REPO=${OPENPOIS_REPO:-~/efs-mount/repos/OpenPOIs}
+export OPENPOIS_CONFIG=${OPENPOIS_CONFIG:-$OPENPOIS_REPO/config.yaml}
 
 if ! mountpoint -q ~/efs-mount; then
     sudo mount -t nfs \

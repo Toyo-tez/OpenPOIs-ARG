@@ -38,7 +38,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
@@ -52,7 +52,7 @@ from openpois.conflation import calibration, calibration_fit  # noqa: E402
 # Configuration constants
 # ----------------------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 VIZ_DIR = config.get_dir_path("conflation") / "viz"
 CURVES_DIR = config.get_dir_path("conflation") / "calibration"
 

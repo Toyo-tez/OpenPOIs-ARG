@@ -5,7 +5,7 @@ snapshot.
 The site used to read Overture's own hosted archive (tiles.overturemaps.org).
 Since 2026-10 that CloudFront distribution answers any request with an
 openpois.org Referer with 403, so we tile the snapshot we already pull each
-month: the US + territories footprint, filtered to the conflation taxonomy
+month: the configured country footprint, filtered to the conflation taxonomy
 allowlist. That is the same Overture data the conflated layer draws on.
 
 Output is a multi-zoom PMTiles archive keyed by the config's
@@ -24,7 +24,7 @@ import json
 
 import pandas as pd
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.io.pmtiles import build_pmtiles
 
@@ -32,7 +32,7 @@ from openpois.io.pmtiles import build_pmtiles
 # Configuration
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 INPUT_PATH = config.get_file_path("snapshot_overture", "snapshot")
 OUTPUT_PATH = config.get_file_path("snapshot_overture", "pmtiles")

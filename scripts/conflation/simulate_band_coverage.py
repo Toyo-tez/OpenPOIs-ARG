@@ -62,7 +62,7 @@ from pathlib import Path  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import pyarrow.parquet as pq  # noqa: E402
-from config_versioned import Config  # noqa: E402
+from openpois.config import load_config  # noqa: E402
 
 from openpois.conflation import calibration_fit as cf  # noqa: E402
 
@@ -179,7 +179,7 @@ def class_given_y(rows: pd.DataFrame, fit_config) -> dict:
 
 def _init_worker(out_dir: str, reps: int, seed: int, truths: tuple = None,
                  modes: tuple = None, band_aggregation: str = "bin") -> None:
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     knobs = config.get("conflation", "calibration")
     fit_config = cf.FitConfig(
         min_cell_gold = int(knobs["min_cell_gold"]),
@@ -499,7 +499,7 @@ def main() -> None:
     # Each run must use its own --out-dir: sim files are keyed by index only.
     cache = out_dir / "coverage_population.parquet"
     if not cache.exists():
-        config = Config("~/repos/openpois/config.yaml")
+        config = load_config()
         with open(config.get_file_path("calibration", "metadata"),
                   encoding = "utf-8") as handle:
             version = json.load(handle)["conflation_version"]

@@ -158,9 +158,16 @@ def build_version_readme(
     conflated_rows = _count_rows(conflated_partitioned)
 
     if config_path is None:
-        config_path = Path("~/repos/openpois/config.yaml").expanduser()
-    config_path = Path(config_path).expanduser()
-    config_hash = _config_hash(config_path) if config_path.exists() else "—"
+        from openpois.config import find_config_path
+
+        try:
+            config_path = find_config_path()
+        except FileNotFoundError:
+            config_path = None
+    config_path = Path(config_path).expanduser() if config_path else None
+    config_hash = (
+        _config_hash(config_path) if config_path and config_path.exists() else "—"
+    )
 
     template = (TEMPLATES_DIR / "version_readme.md.tmpl").read_text()
     return template.format(
@@ -178,9 +185,9 @@ def build_version_readme(
 
 if __name__ == "__main__":
     # Quick sanity check: render both documents to stdout.
-    from config_versioned import Config
+    from openpois.config import load_config
 
-    cfg = Config("~/repos/openpois/config.yaml")
+    cfg = load_config()
     version = cfg.get("versions", "source_coop")
     print("=" * 72)
     print(build_top_readme())

@@ -10,7 +10,7 @@ at lower zooms to match, and over-zooms past the top zoom.
 
 Intermediate FlatGeobuf is staged next to the output and deleted on success.
 """
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.io.pmtiles import build_pmtiles
 
@@ -18,7 +18,7 @@ from openpois.io.pmtiles import build_pmtiles
 # Configuration
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 INPUT_PATH = config.get_file_path("conflation", "conflated")
 OUTPUT_PATH = config.get_file_path("conflation", "pmtiles")

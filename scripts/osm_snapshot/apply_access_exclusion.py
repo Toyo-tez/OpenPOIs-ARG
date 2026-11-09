@@ -42,9 +42,9 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 RATED_PATH = Path(config.get_file_path("snapshot_osm", "rated_snapshot"))
 
 EXCLUDED_ACCESS = ("private", "no")

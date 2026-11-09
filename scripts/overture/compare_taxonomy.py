@@ -56,13 +56,14 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation.taxonomy import (
     assign_overture_shared_label,
     load_match_radii,
     load_overture_crosswalk,
 )
-from openpois.io.boundary import get_us_pr_boundary
+from openpois.io.boundary import get_boundary
 from openpois.io.overture import (
     _apply_duckdb_session_config,
     _build_bbox_predicate,
@@ -71,12 +72,11 @@ from openpois.io.overture import (
     _list_overture_part_keys,
 )
 
-CONFIG_PATH = "~/repos/openpois/config.yaml"
 LEVELS = ["l0", "l1", "l2", "l3"]
 
 
 def _parse_args() -> argparse.Namespace:
-    config = Config(CONFIG_PATH)
+    config = load_config()
     parser = argparse.ArgumentParser(description = __doc__)
     parser.add_argument(
         "--release-date",
@@ -351,7 +351,7 @@ def _resolve_by_tier(tuples: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     args = _parse_args()
-    config = Config(CONFIG_PATH)
+    config = load_config()
 
     if not args.release_date:
         raise SystemExit(
@@ -374,15 +374,36 @@ def main() -> None:
         "download", "general", "boundary", "coastline_buffer_m"
     )
     boundary_dir = config.get_dir_path("boundary")
+    boundary_kwargs = {
+        "cache_name": config.get(
+            "download", "general", "boundary", "cache_name",
+            fail_if_none = False,
+        ),
+        "zip_name": config.get(
+            "download", "general", "boundary", "zip_name", fail_if_none = False
+        ),
+        "shp_name": config.get(
+            "download", "general", "boundary", "shp_name", fail_if_none = False
+        ),
+        "filter_field": config.get(
+            "download", "general", "boundary", "filter_field",
+            fail_if_none = False,
+        ),
+        "filter_values": config.get(
+            "download", "general", "boundary", "filter_values",
+            fail_if_none = False,
+        ),
+    }
 
     print(f"\nRelease under inspection : {args.release_date}")
     print(f"Prior snapshot baseline  : {prior_path}")
     print(f"Prior snapshot exists    : {prior_path.exists()}\n")
 
-    _, coarse_bboxes = get_us_pr_boundary(
+    _, coarse_bboxes = get_boundary(
         source_url = boundary_url,
         cache_dir = boundary_dir,
         coastline_buffer_m = coastline_buffer_m,
+        **boundary_kwargs,
     )
     bbox_predicate = _build_bbox_predicate(coarse_bboxes)
     allowlist_predicate = _build_taxonomy_predicate(

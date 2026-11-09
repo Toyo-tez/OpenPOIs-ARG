@@ -33,6 +33,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation.ghost_osm import build_ghosts
 from openpois.conflation.taxonomy import (
@@ -249,7 +250,7 @@ def main() -> None:
         tzinfo = UTC,
     )
 
-    config = Config("~/repos/openpois/config.yaml")
+    config = load_config()
     out_dir = config.get_dir_path("osm_data", custom_version = args.out_version)
     if args.step in ("roll", "all"):
         _roll(args, config, out_dir)

@@ -8,6 +8,7 @@ Core functions for fitting Bayesian hierarchical models using JAX.
 """
 
 import os
+import tempfile
 
 from numpy.random import randint
 
@@ -29,6 +30,28 @@ except Exception:
     _HAS_FASTPROGRESS = False
 
 
+def _default_cache_dir():
+    """
+    Pick the first writable default for JAX's persistent-compilation cache.
+
+    ``~`` is not always writable: containers running as an arbitrary UID often
+    get ``HOME=/`` (or nothing), and shared CI runners may expose a read-only
+    home. Fall back to the system temp directory rather than failing at import.
+    """
+    candidates = (
+        os.path.expanduser("~/.cache/openpois/jax"),
+        os.path.join(tempfile.gettempdir(), "openpois-jax-cache"),
+    )
+    for candidate in candidates:
+        try:
+            os.makedirs(candidate, exist_ok = True)
+        except OSError:
+            continue
+        if os.access(candidate, os.W_OK):
+            return candidate
+    return candidates[-1]
+
+
 def _configure_compilation_cache():
     """
     Point JAX's persistent-compilation cache at a stable user-local directory.
@@ -40,10 +63,7 @@ def _configure_compilation_cache():
     The env var ``OPENPOIS_JAX_CACHE_DIR`` overrides the default path for
     CI or shared-runner scenarios.
     """
-    cache_dir = os.environ.get(
-        "OPENPOIS_JAX_CACHE_DIR",
-        os.path.expanduser("~/.cache/openpois/jax"),
-    )
+    cache_dir = os.environ.get("OPENPOIS_JAX_CACHE_DIR") or _default_cache_dir()
     os.makedirs(cache_dir, exist_ok = True)
     jax.config.update("jax_compilation_cache_dir", cache_dir)
 

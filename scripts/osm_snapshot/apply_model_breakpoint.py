@@ -42,10 +42,10 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-from config_versioned import Config
+from openpois.config import load_config
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 SNAPSHOT_PATH = config.get_file_path("snapshot_osm", "snapshot")
 MODEL_BASE = Path(config.get_dir_path("model_output")).parent

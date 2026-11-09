@@ -19,13 +19,13 @@ Output files (in testing directory):
 import pyarrow as pa
 import pyarrow.parquet as pq
 import geopandas as gpd
-from config_versioned import Config
+from openpois.config import load_config
 
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 OSM_PATH = config.get_file_path("snapshot_osm", "snapshot")
 OVERTURE_PATH = config.get_file_path("snapshot_overture", "snapshot")

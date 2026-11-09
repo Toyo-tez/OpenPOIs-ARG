@@ -29,10 +29,10 @@ Usage:
 import argparse
 
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 CURRENT_TAG_FILE = "osm_current_tag.parquet"
 

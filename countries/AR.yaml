@@ -1,0 +1,135 @@
+# Argentina country profile (ISO 3166-1 alpha-2: AR).
+#
+# Selected by `country: "AR"` in config.yaml, or:
+#   OPENPOIS_COUNTRY=AR python ...
+#   make site_build COUNTRY=AR
+#
+# The values below are a working starting point. Bump `versions.*` for each new
+# monthly run and set the Source Cooperative account via
+# OPENPOIS_SOURCE_COOP_ACCOUNT (or edit `publish` directly).
+country:
+  iso2: AR
+  iso3: ARG
+  name: Argentina
+  official_name: Argentine Republic
+  languages: [es]
+  currency: ARS
+  timezone: America/Argentina/Buenos_Aires
+
+paths:
+  # All versioned data lives under a country namespace so US and AR runs can
+  # share one checkout without colliding.
+  data_root: ~/data/openpois/AR
+
+versions:
+  osm_data: "20261105"
+  model_output: "20261105_by_shared_label"
+  snapshot_osm: "20261105"
+  snapshot_overture: "20261021"
+  conflation: "20261105"
+  # No Argentina validation round exists yet. Keep a dated folder so a later
+  # validation can be added without renumbering the release.
+  calibration: "20261105"
+  source_coop: "2026-11-05-v1"
+  ghost_osm: "20261105"
+  manual_overrides: "20261105"
+  id_registry: "20261105"
+
+indicators:
+  # Argentina has no US Census CBSA/Place layers. Observations and snapshots
+  # carry msa_code = NO_MSA and urban_rural = rural; the model profile below
+  # disables the region/urbanicity terms so those constants are harmless.
+  enabled: false
+
+download:
+  general:
+    boundary:
+      # Natural Earth 1:10m admin-0 (public domain), filtered to ARG.
+      source_url: "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson"
+      cache_name: "ne_10m_admin_0_countries.geojson"
+      coastline_buffer_m: 100
+      # Clear the US zip-shapefile filenames inherited from the base config.
+      zip_name: null
+      shp_name: null
+      filter_field: "ADM0_A3"
+      filter_values: ["ARG"]
+  osm:
+    start_date: 2016-01-01
+    end_date: 2026-11-04
+    # Geofabrik's Argentina extract covers the whole country, including
+    # Tierra del Fuego.
+    extracts:
+      - name: argentina
+        snapshot_url: "https://download.geofabrik.de/south-america/argentina-latest.osm.pbf"
+        history_url: "https://osm-internal.download.geofabrik.de/south-america/argentina-internal.osh.pbf"
+        replication_url: "https://download.geofabrik.de/south-america/argentina-updates/"
+    # Legacy single-extract keys kept in sync for scripts that still read them.
+    pbf_url: "https://download.geofabrik.de/south-america/argentina-latest.osm.pbf"
+    history_pbf_url: "https://osm-internal.download.geofabrik.de/south-america/argentina-internal.osh.pbf"
+    pr_pbf_url: null
+    usvi_pbf_url: null
+    american_oceania_pbf_url: null
+    pr_history_pbf_url: null
+    usvi_history_pbf_url: null
+    american_oceania_history_pbf_url: null
+    # First run must be a full-history build: there is no Argentina base.
+    history_mode: "full"
+    incremental_history:
+      base_version: null
+      replication_urls:
+        argentina: "https://download.geofabrik.de/south-america/argentina-updates/"
+
+  overture:
+    # The Overture Places release is global; only the boundary filter changes.
+    release_date: "2026-10-21.0"
+
+osm_data:
+  apply_model:
+    model_stub: "20261105"
+
+osm_turnover_model:
+  # Keep the shared-label random effect, but disable the layers that depend on
+  # US Census geography. Re-enable these if a region/urbanicity layer is added
+  # for Argentina.
+  random_effects:
+    terms:
+      msa:
+        enabled: false
+      amenity_msa:
+        enabled: false
+      urbanicity:
+        enabled: false
+    delta_terms:
+      msa:
+        enabled: false
+
+conflation:
+  # No Argentina validation round exists yet, so skip the Bayesian calibration
+  # and publish uncalibrated conf_mean values for now.
+  calibration:
+    enabled: false
+  # Greater Buenos Aires test bbox used by `--test`.
+  test_bbox:
+    xmin: -58.55
+    ymin: -34.72
+    xmax: -58.30
+    ymax: -34.50
+
+site:
+  title: "OpenPOIs Argentina"
+  locale: "es-AR"
+  timezone: "America/Argentina/Buenos_Aires"
+  initial_center: [-58.3816, -34.6037]
+  initial_zoom: 5
+  bbox: [-73.6, -55.1, -53.6, -21.8]
+  geocoder_country: "AR"
+
+publish:
+  bucket: "${OPENPOIS_SOURCE_COOP_ACCOUNT:-henryspatialanalysis}"
+  repo_prefix: "openpois-AR"
+  public_base_url: "https://data.source.coop/${OPENPOIS_SOURCE_COOP_ACCOUNT:-henryspatialanalysis}/openpois-AR"
+  credentials_file: "${OPENPOIS_CREDENTIALS_FILE:-~/.config/openpois/source-coop.json}"
+  version_metadata:
+    osm_snapshot_date: "2026-11-04"
+    overture_release: "2026-10-21.0"
+    model_commit: null

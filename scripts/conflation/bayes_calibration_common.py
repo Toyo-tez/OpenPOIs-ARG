@@ -9,6 +9,7 @@ and the scripts refuse a deployed ``calibration/`` directory.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from dataclasses import replace
@@ -18,18 +19,21 @@ import numpy as np
 import pandas as pd
 from config_versioned import Config
 
+from openpois.config import load_config as _load_openpois_config
 from openpois.conflation import calibration, calibration_bayes as cb
 from openpois.conflation import calibration_fit as cf
 
-CONFIG_PATH = "~/repos/openpois/config.yaml"
 DEFAULT_EVAL_NAME = "calibration_eval_bayes_20260927"
 # The October 2026 production configuration (interaction index, bin band),
 # fit on round 20260730 with bins on the 20260902 population: the curves the
-# October run would publish (2026-09-26 dry run).
-PRODUCTION_CURVES = Path(
+# October run would publish (2026-09-26 dry run). Override per country/run with
+# OPENPOIS_PRODUCTION_CURVES; countries without a v4 comparator simply get NaN
+# comparison columns.
+PRODUCTION_CURVES = Path(os.environ.get(
+    "OPENPOIS_PRODUCTION_CURVES",
     "~/data/openpois/conflation/20260902/calibration_eval_20260925/"
-    "fit_production_config"
-).expanduser()
+    "fit_production_config",
+)).expanduser()
 OVERTURE_ATOMS = (0.919912, 0.990219)
 # Figure palette: the dataviz skill's validated categorical order (light mode).
 COLORS = {"A": "#2a78d6", "production": "#eb6834", "B": "#1baf7a",
@@ -40,7 +44,7 @@ SEQUENTIAL = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95",
 
 
 def load_config() -> Config:
-    return Config(CONFIG_PATH)
+    return _load_openpois_config()
 
 
 def fit_config_from(config: Config) -> cf.FitConfig:

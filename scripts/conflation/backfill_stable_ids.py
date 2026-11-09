@@ -42,6 +42,7 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
+from openpois.config import load_config
 from openpois.conflation import stable_ids as si
 from openpois.io.source_coop import (
     LEGACY_READ_BUCKET,
@@ -49,12 +50,14 @@ from openpois.io.source_coop import (
     make_anonymous_read_client,
 )
 
+config = load_config()
+
 RELEASES = (
     "2026-04-23", "2026-05-21", "2026-06-27", "2026-07-30",
     "2026-09-02", "2026-10-01", "2026-10-22",
 )
-REPO_PREFIX = "henryspatialanalysis/openpois"
-DATA_ROOT = Path("~/data/openpois").expanduser()
+REPO_PREFIX = f"{config.get('publish', 'bucket')}/{config.get('publish', 'repo_prefix')}"
+DATA_ROOT = config.get_dir_path("conflation").parent.parent
 
 
 def _yyyymmdd(release: str) -> str:

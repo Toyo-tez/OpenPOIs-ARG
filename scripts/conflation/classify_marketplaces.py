@@ -45,7 +45,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 from openpois.conflation.taxonomy import (
     MARKETPLACE_CACHE_FILENAME,
@@ -56,7 +56,7 @@ from openpois.conflation.taxonomy import (
     normalize_marketplace_name,
 )
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 SNAPSHOT_PATH = config.get_file_path("snapshot_osm", "snapshot")
 CACHE_PATH = (
     Path(__file__).resolve().parents[2]

@@ -30,17 +30,17 @@ import numpy as np
 import pandas as pd
 import geopandas as gpd
 
-CENSUS_DIR = Path("~/data/openpois/census_areas").expanduser()
-PLACE_SHP = CENSUS_DIR / "cb_2023_us_place_500k.shp"
-POP_CSV = CENSUS_DIR / "place_population_2020.csv"
-RATED_SNAPSHOT = Path(
-    "~/data/openpois/snapshots/osm/20260521/osm_snapshot_rated.parquet"
-).expanduser()
+from openpois.config import indicators_enabled, load_config
+
+config = load_config()
+PLACE_SHP = config.get_file_path("census_areas", "place_shapefile")
+POP_CSV = config.get_file_path("census_areas", "place_population")
+RATED_SNAPSHOT = config.get_file_path("snapshot_osm", "rated_snapshot")
 POP_THRESHOLD = 100_000
-OUT_CSV = Path(
-    "~/data/openpois/osm_turnover_model/2026-06-05-nationwide-full/"
-    "city_shared_label_confidence_quartiles.csv"
-).expanduser()
+OUT_CSV = (
+    config.get_dir_path("model_output")
+    / "city_shared_label_confidence_quartiles.csv"
+)
 
 ALL_LABEL = "__ALL__"
 
@@ -77,6 +77,11 @@ def quantile_table(df: pd.DataFrame, group_cols: list[str]) -> pd.DataFrame:
 
 
 def main() -> None:
+    if not indicators_enabled(config):
+        raise SystemExit(
+            "city_confidence_quartiles needs the Census place layers; set "
+            "indicators.enabled: true in the active country profile."
+        )
     big = load_big_cities()
 
     print(f"Reading rated snapshot from {RATED_SNAPSHOT} ...")

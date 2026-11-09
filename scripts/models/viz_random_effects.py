@@ -22,7 +22,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
-from config_versioned import Config
+from openpois.config import load_config
 
 import matplotlib
 matplotlib.use("Agg")  # noqa: E402
@@ -30,7 +30,7 @@ matplotlib.use("Agg")  # noqa: E402
 from openpois.osm.change_plots import change_plot_create  # noqa: E402
 
 
-config = Config("~/repos/openpois/config.yaml")
+config = load_config()
 
 CELL_COLS = ["shared_label", "msa_code", "urban_rural"]
 P_COLS = ["p_fresh_mean", "p_fresh_lower", "p_fresh_upper"]
