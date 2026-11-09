@@ -29,7 +29,7 @@ services:
       context: .
       dockerfile: docker/pipeline.Dockerfile
     image: openpois-pipeline:local
-    user: *host-user
+    user: root
     environment: *home
     entrypoint: ["python"]
     command:
