@@ -64,13 +64,15 @@ services:
 
   # Not started by `docker compose up`; use it for pipeline runs:
   #   docker compose run --rm pipeline snapshot_osm COUNTRY=AR
+  # Runs as root so it can write to the mounted data directory regardless of
+  # the host UID. The public-facing services (pmtiles, site) stay non-root.
   pipeline:
     profiles: ["tools"]
     build:
       context: .
       dockerfile: docker/pipeline.Dockerfile
     image: openpois-pipeline:local
-    user: *host-user
+    user: root
     environment: *home
     entrypoint: ["make"]
     volumes: *data-volume
