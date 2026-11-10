@@ -286,19 +286,24 @@ def load_place_population(cache_csv: Path) -> pd.DataFrame:
 # same units.  These loaders rename INDEC columns to the standardized names
 # expected by :mod:`openpois.io.indicators``:
 #
-#   departamento shapefile: COD_DEPTO -> msa_code, NOM_DEPTO -> msa_name
-#   localidad shapefile:    COD_LOC   -> place_geoid, NOM_LOC -> place_name
-#   population CSV:         COD_LOC   -> place_geoid, POBLACION -> population
+#   departamento shapefile: cod_dep -> msa_code, fraccion -> msa_name
+#   localidad shapefile:    codigo -> place_geoid, fraccion -> place_name
+#   population CSV:         codigo -> place_geoid, POB_TOT_P -> population
+#
+# The fracciones-censales-2022 shapefile is at census-fraction level.  The
+# departamento boundary is obtained by dissolving (union) the fractions that
+# share the same cod_dep; the localidad boundary is obtained by dissolving
+# fractions that share the same codigo.
 
 # Default INDEC column names.  These can be overridden per-call to match the
 # actual schema of the downloaded INDEC files (fracciones-censales-2022 may
 # use different column names than the departamento/localidad shapefiles).
-INDEC_DEPTO_CODE_COL = "COD_DEPTO"
-INDEC_DEPTO_NAME_COL = "NOM_DEPTO"
-INDEC_LOC_CODE_COL = "COD_LOC"
-INDEC_LOC_NAME_COL = "NOM_LOC"
-INDEC_LOC_AREA_COL = "SUPERFICIE"
-INDEC_POP_COL = "POBLACION"
+INDEC_DEPTO_CODE_COL = "cod_dep"
+INDEC_DEPTO_NAME_COL = "fraccion"
+INDEC_LOC_CODE_COL = "codigo"
+INDEC_LOC_NAME_COL = "fraccion"
+INDEC_LOC_AREA_COL = None
+INDEC_POP_COL = "POB_TOT_P"
 
 
 def load_departamento_boundary(
@@ -313,6 +318,11 @@ def load_departamento_boundary(
     second-level administrative divisions, equivalent to US counties/MSAs for
     indicator purposes.  No LSAD-style filter is applied: every row in the
     shapefile is retained.
+
+    When the source shapefile is at census-fraction level (as is the case for
+    the INDEC fracciones-censales-2022 dataset), the fractions are dissolved
+    (unioned) by their department code so that each row represents one
+    departamento/partido with a single merged geometry.
 
     Args:
         shp_path: Path to the unzipped INDEC departamento ``.shp``.
@@ -341,6 +351,10 @@ def load_departamento_boundary(
             f"INDEC departamento shapefile {shp_path} lacks a {code_col!r} "
             "column; cannot build msa_code."
         )
+    # Dissolve by departamento code so each row is one departamento/partido.
+    gdf = gdf.dissolve(by = "msa_code", as_index = False).reset_index(drop = True)
+    if "msa_name" not in gdf.columns:
+        gdf["msa_name"] = gdf["msa_code"].astype(str)
     keep = ["msa_code", "msa_name", "geometry"]
     keep = [c for c in keep if c in gdf.columns]
     return gdf.loc[:, keep].reset_index(drop = True)
@@ -354,6 +368,11 @@ def load_localidad(
 ) -> gpd.GeoDataFrame:
     """
     Read an INDEC localidad shapefile, EPSG:4326.
+
+    When the source shapefile is at census-fraction level (as is the case for
+    the INDEC fracciones-censales-2022 dataset), the fractions are dissolved
+    by their localidad code so that each row represents one localidad with a
+    single merged geometry.
 
     Args:
         shp_path: Path to the unzipped INDEC localidad ``.shp``.
@@ -388,8 +407,10 @@ def load_localidad(
             f"INDEC localidad shapefile {shp_path} lacks a {code_col!r} "
             "column; cannot build place_geoid."
         )
-    keep = ["place_geoid", "place_name", "aland_m2", "geometry"]
-    keep = [c for c in keep if c in gdf.columns]
+    # Dissolve by localidad code so each row is one localidad.
+    gdf = gdf.dissolve(by = "place_geoid", as_index = False).reset_index(drop = True)
+    if "place_name" not in gdf.columns:
+        gdf["place_name"] = gdf["place_geoid"].astype(str)
     if "aland_m2" not in gdf.columns:
         gdf["aland_m2"] = 0.0
     return gdf.loc[:, ["place_geoid", "place_name", "aland_m2", "geometry"]].reset_index(drop = True)
