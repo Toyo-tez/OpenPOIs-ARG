@@ -86,26 +86,39 @@ download:
     release_date: "2026-10-21.0"
 
   # INDEC (Argentina) reference areas for the msa_code + urban_rural indicators.
-  # INDEC publishes the Marco Geográfico Nacional as boundary shapefiles and
-  # Census 2022 population by departamento/partido and localidad. These URLs
-  # point to INDEC's published files; update them if INDEC changes its
-  # publishing layout. The US Census infrastructure in config.yaml is untouched
-  # and is used when country=US.
+  # Source: https://infra.datos.gob.ar/catalog/indec/dataset/49 (Censo Nacional
+  # 2022 — Fracciones Censales). These are real INDEC file URLs from the
+  # Argentine government's open data portal. The US Census infrastructure in
+  # config.yaml is untouched and is used when country=US.
+  #
+  # NOTE: The fracciones-censales shapefile contains both boundary geometry and
+  # attribute columns. The loader expects column names COD_DEPTO/NOM_DEPTO for
+  # departamento codes and COD_LOC/NOM_LOC/SUPERFICIE for localidad codes, plus
+  # POBLACION for population. If the actual column names differ, update the
+  # indec_*_col_* keys below to match the schema in the downloaded files.
   census_areas:
-    # INDEC departamento/partido boundary shapefile (zip). Departamentos are
-    # Argentina's second-level administrative divisions (except Buenos Aires
-    # province, which uses partidos). Used for msa_code.
-    indec_depto_url: "https://www.indec.gov.ar/amosweb/canale.asp?ge_codigo=2&ge_tema=1"
-    indec_depto_shp_name: "departamentos.shp"
-    # INDEC localidad boundary shapefile (zip). Localidades are cities, towns
-    # and populated places. Used for urban_rural classification.
-    indec_loc_url: "https://www.indec.gov.ar/amosweb/canale.asp?ge_codigo=2&ge_tema=2"
-    indec_loc_shp_name: "localidades.shp"
-    # INDEC Census 2022 population by localidad (direct CSV download, no API
-    # key required — INDEC does not publish a public REST API equivalent to
-    # api.census.gov). Columns are mapped: COD_LOC -> place_geoid, POBLACION
-    # -> population.
-    population_url: "https://www.indec.gov.ar/amosweb/canale.asp?ge_codigo=3&ge_tema=1"
+    # INDEC departamento/partido boundary shapefile (zip) from fracciones
+    # censales 2022. Contains boundary geometry for census fractions, which
+    # serve as the geographic units for indicator enrichment.
+    indec_depto_url: "https://infra.datos.gob.ar/catalog/indec/dataset/49/distribution/49.3/download/fracciones-censales-2022.zip"
+    indec_depto_shp_name: "fracciones-censales-2022.shp"
+    # INDEC localidad boundary shapefile (zip). Reuses the same fracciones
+    # censales shapefile as the localidad boundary layer (census fractions are
+    # nested within localidades).
+    indec_loc_url: "https://infra.datos.gob.ar/catalog/indec/dataset/49/distribution/49.3/download/fracciones-censales-2022.zip"
+    indec_loc_shp_name: "fracciones-censales-2022.shp"
+    # INDEC Census 2022 population CSV by fraccion censal. Columns are mapped:
+    # COD_LOC -> place_geoid, POBLACION -> population.
+    population_url: "https://infra.datos.gob.ar/catalog/indec/dataset/49/distribution/49.1/download/fracciones-censales-2022.csv"
+    # INDEC column name overrides (match the schema of the downloaded files).
+    # Defaults assume COD_DEPTO/NOM_DEPTO for departamentos, COD_LOC/NOM_LOC
+    # /SUPERFICIE for localidades, and POBLACION for population.
+    indec_depto_code_col: "COD_DEPTO"
+    indec_depto_name_col: "NOM_DEPTO"
+    indec_loc_code_col: "COD_LOC"
+    indec_loc_name_col: "NOM_LOC"
+    indec_loc_area_col: "SUPERFICIE"
+    indec_pop_col: "POBLACION"
 
 osm_data:
   apply_model:

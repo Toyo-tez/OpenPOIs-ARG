@@ -119,6 +119,13 @@ INDEC_LOC_URL = config.get("download", "census_areas", "indec_loc_url", fail_if_
 INDEC_DEPTO_SHP_NAME = config.get("download", "census_areas", "indec_depto_shp_name", fail_if_none = False)
 INDEC_LOC_SHP_NAME = config.get("download", "census_areas", "indec_loc_shp_name", fail_if_none = False)
 INDEC_POPULATION_URL = config.get("download", "census_areas", "population_url", fail_if_none = False)
+# INDEC column name overrides (match the schema of the downloaded files).
+INDEC_DEPTO_CODE_COL = config.get("download", "census_areas", "indec_depto_code_col", fail_if_none = False)
+INDEC_DEPTO_NAME_COL = config.get("download", "census_areas", "indec_depto_name_col", fail_if_none = False)
+INDEC_LOC_CODE_COL = config.get("download", "census_areas", "indec_loc_code_col", fail_if_none = False)
+INDEC_LOC_NAME_COL = config.get("download", "census_areas", "indec_loc_name_col", fail_if_none = False)
+INDEC_LOC_AREA_COL = config.get("download", "census_areas", "indec_loc_area_col", fail_if_none = False)
+INDEC_POP_COL = config.get("download", "census_areas", "indec_pop_col", fail_if_none = False)
 
 # DuckDB execution limits. The sort operator spills past memory_limit so this
 # caps peak RAM independent of input size. Threads default to os.cpu_count()
@@ -184,12 +191,20 @@ def _ensure_indec_layers() -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | 
     census_areas.fetch_indec_population(
         CENSUS_DIR / "indec_population_2022.csv",
         source_url = INDEC_POPULATION_URL,
+        code_col = INDEC_LOC_CODE_COL,
+        pop_col = INDEC_POP_COL,
     )
     depto_shp = CENSUS_DIR / INDEC_DEPTO_SHP_NAME
     localidad_shp = CENSUS_DIR / INDEC_LOC_SHP_NAME
     population_csv = CENSUS_DIR / "indec_population_2022.csv"
     return indicators.load_indec_classified_layers(
-        depto_shp, localidad_shp, population_csv
+        depto_shp, localidad_shp, population_csv,
+        depto_code_col = INDEC_DEPTO_CODE_COL,
+        depto_name_col = INDEC_DEPTO_NAME_COL,
+        loc_code_col = INDEC_LOC_CODE_COL,
+        loc_name_col = INDEC_LOC_NAME_COL,
+        loc_area_col = INDEC_LOC_AREA_COL,
+        pop_col = INDEC_POP_COL,
     )
 
 

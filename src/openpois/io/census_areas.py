@@ -290,15 +290,22 @@ def load_place_population(cache_csv: Path) -> pd.DataFrame:
 #   localidad shapefile:    COD_LOC   -> place_geoid, NOM_LOC -> place_name
 #   population CSV:         COD_LOC   -> place_geoid, POBLACION -> population
 
-_INDEC_DEPTO_CODE = "COD_DEPTO"
-_INDEC_DEPTO_NAME = "NOM_DEPTO"
-_INDEC_LOC_CODE = "COD_LOC"
-_INDEC_LOC_NAME = "NOM_LOC"
-_INDEC_LOC_AREA = "SUPERFICIE"
-_INDEC_POP_COL = "POBLACION"
+# Default INDEC column names.  These can be overridden per-call to match the
+# actual schema of the downloaded INDEC files (fracciones-censales-2022 may
+# use different column names than the departamento/localidad shapefiles).
+INDEC_DEPTO_CODE_COL = "COD_DEPTO"
+INDEC_DEPTO_NAME_COL = "NOM_DEPTO"
+INDEC_LOC_CODE_COL = "COD_LOC"
+INDEC_LOC_NAME_COL = "NOM_LOC"
+INDEC_LOC_AREA_COL = "SUPERFICIE"
+INDEC_POP_COL = "POBLACION"
 
 
-def load_departamento_boundary(shp_path: Path) -> gpd.GeoDataFrame:
+def load_departamento_boundary(
+    shp_path: Path,
+    code_col: str | None = None,
+    name_col: str | None = None,
+) -> gpd.GeoDataFrame:
     """
     Read an INDEC departamento/partido boundary shapefile, EPSG:4326.
 
@@ -309,6 +316,10 @@ def load_departamento_boundary(shp_path: Path) -> gpd.GeoDataFrame:
 
     Args:
         shp_path: Path to the unzipped INDEC departamento ``.shp``.
+        code_col: Source column name for the departamento code (default
+            ``INDEC_DEPTO_CODE_COL``).
+        name_col: Source column name for the departamento name (default
+            ``INDEC_DEPTO_NAME_COL``).
 
     Returns:
         GeoDataFrame with columns ``[msa_code, msa_name, geometry]`` in
@@ -317,15 +328,17 @@ def load_departamento_boundary(shp_path: Path) -> gpd.GeoDataFrame:
     gdf = gpd.read_file(shp_path)
     if gdf.crs is None or gdf.crs.to_epsg() != 4326:
         gdf = gdf.to_crs("EPSG:4326")
+    code_col = code_col or INDEC_DEPTO_CODE_COL
+    name_col = name_col or INDEC_DEPTO_NAME_COL
     rename = {}
-    if _INDEC_DEPTO_CODE in gdf.columns:
-        rename[_INDEC_DEPTO_CODE] = "msa_code"
-    if _INDEC_DEPTO_NAME in gdf.columns:
-        rename[_INDEC_DEPTO_NAME] = "msa_name"
+    if code_col in gdf.columns:
+        rename[code_col] = "msa_code"
+    if name_col in gdf.columns:
+        rename[name_col] = "msa_name"
     gdf = gdf.rename(columns = rename)
     if "msa_code" not in gdf.columns:
         raise ValueError(
-            f"INDEC departamento shapefile {shp_path} lacks a {_INDEC_DEPTO_CODE!r} "
+            f"INDEC departamento shapefile {shp_path} lacks a {code_col!r} "
             "column; cannot build msa_code."
         )
     keep = ["msa_code", "msa_name", "geometry"]
@@ -333,32 +346,46 @@ def load_departamento_boundary(shp_path: Path) -> gpd.GeoDataFrame:
     return gdf.loc[:, keep].reset_index(drop = True)
 
 
-def load_localidad(shp_path: Path) -> gpd.GeoDataFrame:
+def load_localidad(
+    shp_path: Path,
+    code_col: str | None = None,
+    name_col: str | None = None,
+    area_col: str | None = None,
+) -> gpd.GeoDataFrame:
     """
     Read an INDEC localidad shapefile, EPSG:4326.
 
     Args:
         shp_path: Path to the unzipped INDEC localidad ``.shp``.
+        code_col: Source column name for the localidad code (default
+            ``INDEC_LOC_CODE_COL``).
+        name_col: Source column name for the localidad name (default
+            ``INDEC_LOC_NAME_COL``).
+        area_col: Source column name for the localidad area (default
+            ``INDEC_LOC_AREA_COL``).
 
     Returns:
         GeoDataFrame with columns ``[place_geoid, place_name, aland_m2,
         geometry]`` in EPSG:4326, one row per localidad.  ``aland_m2`` comes
-        from the shapefile's ``SUPERFICIE`` column when present.
+        from the shapefile's area column when present.
     """
     gdf = gpd.read_file(shp_path)
     if gdf.crs is None or gdf.crs.to_epsg() != 4326:
         gdf = gdf.to_crs("EPSG:4326")
+    code_col = code_col or INDEC_LOC_CODE_COL
+    name_col = name_col or INDEC_LOC_NAME_COL
+    area_col = area_col or INDEC_LOC_AREA_COL
     rename = {}
-    if _INDEC_LOC_CODE in gdf.columns:
-        rename[_INDEC_LOC_CODE] = "place_geoid"
-    if _INDEC_LOC_NAME in gdf.columns:
-        rename[_INDEC_LOC_NAME] = "place_name"
-    if _INDEC_LOC_AREA in gdf.columns:
-        rename[_INDEC_LOC_AREA] = "aland_m2"
+    if code_col in gdf.columns:
+        rename[code_col] = "place_geoid"
+    if name_col in gdf.columns:
+        rename[name_col] = "place_name"
+    if area_col in gdf.columns:
+        rename[area_col] = "aland_m2"
     gdf = gdf.rename(columns = rename)
     if "place_geoid" not in gdf.columns:
         raise ValueError(
-            f"INDEC localidad shapefile {shp_path} lacks a {_INDEC_LOC_CODE!r} "
+            f"INDEC localidad shapefile {shp_path} lacks a {code_col!r} "
             "column; cannot build place_geoid."
         )
     keep = ["place_geoid", "place_name", "aland_m2", "geometry"]
@@ -373,6 +400,8 @@ def fetch_indec_population(
     source_url: str | None = None,
     overwrite: bool = False,
     timeout: int = 120,
+    code_col: str | None = None,
+    pop_col: str | None = None,
 ) -> Path:
     """
     Fetch INDEC Census 2022 population by localidad and cache as CSV.
@@ -383,8 +412,9 @@ def fetch_indec_population(
     downloads a single CSV whose rows are keyed by localidad code.
 
     The CSV is expected to contain at least two columns: a localidad code
-    (``COD_LOC``) and a population count (``POBLACION``).  Columns are mapped
-    to the standardized ``[place_geoid, population]`` output.
+    (default ``INDEC_LOC_CODE_COL``) and a population count (default
+    ``INDEC_POP_COL``).  Columns are mapped to the standardized
+    ``[place_geoid, population]`` output.
 
     Args:
         cache_csv: Destination CSV path.
@@ -392,6 +422,10 @@ def fetch_indec_population(
             and the cache already exists, returns the cache path unchanged.
         overwrite: If True, always re-download and overwrite the cache.
         timeout: Per-request timeout in seconds.
+        code_col: Source column name for the localidad code (default
+            ``INDEC_LOC_CODE_COL``).
+        pop_col: Source column name for the population count (default
+            ``INDEC_POP_COL``).
 
     Returns:
         Path to the cached CSV with columns ``[place_geoid, population]``.
@@ -413,14 +447,16 @@ def fetch_indec_population(
     with open(tmp_csv, "wb") as f:
         for chunk in resp.iter_content(chunk_size = 1024 * 1024):
             f.write(chunk)
-    # Normalize: read, rename COD_LOC->place_geoid, POBLACION->population,
+    # Normalize: read, rename code_col->place_geoid, pop_col->population,
     # write clean CSV.
-    df = pd.read_csv(tmp_csv, dtype = {_INDEC_LOC_CODE: str})
+    code_col = code_col or INDEC_LOC_CODE_COL
+    pop_col = pop_col or INDEC_POP_COL
+    df = pd.read_csv(tmp_csv, dtype = {code_col: str})
     col_map = {}
-    if _INDEC_LOC_CODE in df.columns:
-        col_map[_INDEC_LOC_CODE] = "place_geoid"
-    if _INDEC_POP_COL in df.columns:
-        col_map[_INDEC_POP_COL] = "population"
+    if code_col in df.columns:
+        col_map[code_col] = "place_geoid"
+    if pop_col in df.columns:
+        col_map[pop_col] = "population"
     df = df.rename(columns = col_map)
     missing = [c for c in ("place_geoid", "population") if c not in df.columns]
     if missing:

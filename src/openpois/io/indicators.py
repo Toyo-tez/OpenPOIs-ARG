@@ -75,6 +75,12 @@ def load_indec_classified_layers(
     depto_shp: Path,
     localidad_shp: Path,
     population_csv: Path,
+    depto_code_col: str | None = None,
+    depto_name_col: str | None = None,
+    loc_code_col: str | None = None,
+    loc_name_col: str | None = None,
+    loc_area_col: str | None = None,
+    pop_col: str | None = None,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """
     Load and prepare INDEC (Argentina) reference layers for indicators.
@@ -86,15 +92,34 @@ def load_indec_classified_layers(
         depto_shp: Path to the INDEC departamento/partido shapefile.
         localidad_shp: Path to the INDEC localidad shapefile.
         population_csv: Path to the cached INDEC population CSV.
+        depto_code_col: Source column name for departamento code (default
+            ``INDEC_DEPTO_CODE_COL``).
+        depto_name_col: Source column name for departamento name (default
+            ``INDEC_DEPTO_NAME_COL``).
+        loc_code_col: Source column name for localidad code (default
+            ``INDEC_LOC_CODE_COL``).
+        loc_name_col: Source column name for localidad name (default
+            ``INDEC_LOC_NAME_COL``).
+        loc_area_col: Source column name for localidad area (default
+            ``INDEC_LOC_AREA_COL``).
+        pop_col: Source column name for population count (default
+            ``INDEC_POP_COL``).
 
     Returns:
         ``(msa_gdf, classified_places_gdf)`` — both EPSG:4326.  ``msa_code``
         carries the departamento/partido code; ``urban_rural`` classifies each
         localidad as urban / suburban / rural per population + density.
     """
-    msa_gdf = census_areas.load_departamento_boundary(depto_shp)
+    msa_gdf = census_areas.load_departamento_boundary(
+        depto_shp, code_col = depto_code_col, name_col = depto_name_col
+    )
     classified = classify_places(
-        census_areas.load_localidad(localidad_shp),
+        census_areas.load_localidad(
+            localidad_shp,
+            code_col = loc_code_col,
+            name_col = loc_name_col,
+            area_col = loc_area_col,
+        ),
         census_areas.load_place_population(population_csv),
     )
     return msa_gdf, classified
