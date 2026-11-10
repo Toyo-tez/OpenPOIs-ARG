@@ -36,10 +36,12 @@ versions:
   id_registry: "20261105"
 
 indicators:
-  # Argentina has no US Census CBSA/Place layers. Observations and snapshots
-  # carry msa_code = NO_MSA and urban_rural = rural; the model profile below
-  # disables the region/urbanicity terms so those constants are harmless.
-  enabled: false
+  # Argentina uses INDEC (Instituto Nacional de Estadística y Censos)
+  # reference areas instead of the US Census: departamentos/partidos for
+  # msa_code and localidades for urban_rural. The turnover model's region /
+  # urbanicity terms are re-enabled because INDEC geography provides real
+  # variation across Argentina.
+  enabled: true
 
 download:
   general:
@@ -83,25 +85,47 @@ download:
     # The Overture Places release is global; only the boundary filter changes.
     release_date: "2026-10-21.0"
 
+  # INDEC (Argentina) reference areas for the msa_code + urban_rural indicators.
+  # INDEC publishes the Marco Geográfico Nacional as boundary shapefiles and
+  # Census 2022 population by departamento/partido and localidad. These URLs
+  # point to INDEC's published files; update them if INDEC changes its
+  # publishing layout. The US Census infrastructure in config.yaml is untouched
+  # and is used when country=US.
+  census_areas:
+    # INDEC departamento/partido boundary shapefile (zip). Departamentos are
+    # Argentina's second-level administrative divisions (except Buenos Aires
+    # province, which uses partidos). Used for msa_code.
+    indec_depto_url: "https://www.indec.gov.ar/amosweb/canale.asp?ge_codigo=2&ge_tema=1"
+    indec_depto_shp_name: "departamentos.shp"
+    # INDEC localidad boundary shapefile (zip). Localidades are cities, towns
+    # and populated places. Used for urban_rural classification.
+    indec_loc_url: "https://www.indec.gov.ar/amosweb/canale.asp?ge_codigo=2&ge_tema=2"
+    indec_loc_shp_name: "localidades.shp"
+    # INDEC Census 2022 population by localidad (direct CSV download, no API
+    # key required — INDEC does not publish a public REST API equivalent to
+    # api.census.gov). Columns are mapped: COD_LOC -> place_geoid, POBLACION
+    # -> population.
+    population_url: "https://www.indec.gov.ar/amosweb/canale.asp?ge_codigo=3&ge_tema=1"
+
 osm_data:
   apply_model:
     model_stub: "20261105"
 
 osm_turnover_model:
-  # Keep the shared-label random effect, but disable the layers that depend on
-  # US Census geography. Re-enable these if a region/urbanicity layer is added
-  # for Argentina.
+  # INDEC geography (departamentos/partidos + localidades) replaces US Census
+  # CBSA/Place layers. Region / urbanicity terms are enabled because INDEC
+  # provides real spatial variation across Argentina.
   random_effects:
     terms:
       msa:
-        enabled: false
+        enabled: true
       amenity_msa:
-        enabled: false
+        enabled: true
       urbanicity:
-        enabled: false
+        enabled: true
     delta_terms:
       msa:
-        enabled: false
+        enabled: true
 
 conflation:
   # No Argentina validation round exists yet, so skip the Bayesian calibration

@@ -264,12 +264,175 @@ def load_place_population(cache_csv: Path) -> pd.DataFrame:
     Read the cached place-population CSV.
 
     Args:
-        cache_csv: Path to the CSV written by :func:`fetch_place_population`.
+        cache_csv: Path to the CSV written by :func:`fetch_place_population`
+            (or :func:`fetch_indec_population` for Argentina).
 
     Returns:
         DataFrame with columns ``[place_geoid, population]`` (``place_geoid``
-        as a zero-padded 7-character string).
+        as a zero-padded string).
     """
     df = pd.read_csv(cache_csv, dtype = {"place_geoid": str})
     df["place_geoid"] = df["place_geoid"].str.zfill(7)
     return df.loc[:, ["place_geoid", "population"]]
+
+
+# -----------------------------------------------------------------------------
+# INDEC (Argentina) reference areas
+# -----------------------------------------------------------------------------
+
+# INDEC publishes the Marco Geográfico Nacional with boundary shapefiles for
+# departamentos / partidos (second-level administrative divisions) and
+# localidades (cities and towns).  Census 2022 population is published by the
+# same units.  These loaders rename INDEC columns to the standardized names
+# expected by :mod:`openpois.io.indicators``:
+#
+#   departamento shapefile: COD_DEPTO -> msa_code, NOM_DEPTO -> msa_name
+#   localidad shapefile:    COD_LOC   -> place_geoid, NOM_LOC -> place_name
+#   population CSV:         COD_LOC   -> place_geoid, POBLACION -> population
+
+_INDEC_DEPTO_CODE = "COD_DEPTO"
+_INDEC_DEPTO_NAME = "NOM_DEPTO"
+_INDEC_LOC_CODE = "COD_LOC"
+_INDEC_LOC_NAME = "NOM_LOC"
+_INDEC_LOC_AREA = "SUPERFICIE"
+_INDEC_POP_COL = "POBLACION"
+
+
+def load_departamento_boundary(shp_path: Path) -> gpd.GeoDataFrame:
+    """
+    Read an INDEC departamento/partido boundary shapefile, EPSG:4326.
+
+    Departamentos (and partidos in Buenos Aires province) are Argentina's
+    second-level administrative divisions, equivalent to US counties/MSAs for
+    indicator purposes.  No LSAD-style filter is applied: every row in the
+    shapefile is retained.
+
+    Args:
+        shp_path: Path to the unzipped INDEC departamento ``.shp``.
+
+    Returns:
+        GeoDataFrame with columns ``[msa_code, msa_name, geometry]`` in
+        EPSG:4326, one row per departamento/partido.
+    """
+    gdf = gpd.read_file(shp_path)
+    if gdf.crs is None or gdf.crs.to_epsg() != 4326:
+        gdf = gdf.to_crs("EPSG:4326")
+    rename = {}
+    if _INDEC_DEPTO_CODE in gdf.columns:
+        rename[_INDEC_DEPTO_CODE] = "msa_code"
+    if _INDEC_DEPTO_NAME in gdf.columns:
+        rename[_INDEC_DEPTO_NAME] = "msa_name"
+    gdf = gdf.rename(columns = rename)
+    if "msa_code" not in gdf.columns:
+        raise ValueError(
+            f"INDEC departamento shapefile {shp_path} lacks a {_INDEC_DEPTO_CODE!r} "
+            "column; cannot build msa_code."
+        )
+    keep = ["msa_code", "msa_name", "geometry"]
+    keep = [c for c in keep if c in gdf.columns]
+    return gdf.loc[:, keep].reset_index(drop = True)
+
+
+def load_localidad(shp_path: Path) -> gpd.GeoDataFrame:
+    """
+    Read an INDEC localidad shapefile, EPSG:4326.
+
+    Args:
+        shp_path: Path to the unzipped INDEC localidad ``.shp``.
+
+    Returns:
+        GeoDataFrame with columns ``[place_geoid, place_name, aland_m2,
+        geometry]`` in EPSG:4326, one row per localidad.  ``aland_m2`` comes
+        from the shapefile's ``SUPERFICIE`` column when present.
+    """
+    gdf = gpd.read_file(shp_path)
+    if gdf.crs is None or gdf.crs.to_epsg() != 4326:
+        gdf = gdf.to_crs("EPSG:4326")
+    rename = {}
+    if _INDEC_LOC_CODE in gdf.columns:
+        rename[_INDEC_LOC_CODE] = "place_geoid"
+    if _INDEC_LOC_NAME in gdf.columns:
+        rename[_INDEC_LOC_NAME] = "place_name"
+    if _INDEC_LOC_AREA in gdf.columns:
+        rename[_INDEC_LOC_AREA] = "aland_m2"
+    gdf = gdf.rename(columns = rename)
+    if "place_geoid" not in gdf.columns:
+        raise ValueError(
+            f"INDEC localidad shapefile {shp_path} lacks a {_INDEC_LOC_CODE!r} "
+            "column; cannot build place_geoid."
+        )
+    keep = ["place_geoid", "place_name", "aland_m2", "geometry"]
+    keep = [c for c in keep if c in gdf.columns]
+    if "aland_m2" not in gdf.columns:
+        gdf["aland_m2"] = 0.0
+    return gdf.loc[:, ["place_geoid", "place_name", "aland_m2", "geometry"]].reset_index(drop = True)
+
+
+def fetch_indec_population(
+    cache_csv: Path,
+    source_url: str | None = None,
+    overwrite: bool = False,
+    timeout: int = 120,
+) -> Path:
+    """
+    Fetch INDEC Census 2022 population by localidad and cache as CSV.
+
+    INDEC does not publish a public REST API equivalent to the US Census
+    Bureau's ``api.census.gov``.  Population data is therefore distributed as
+    downloadable files (CSV / Excel) from INDEC's site.  This function
+    downloads a single CSV whose rows are keyed by localidad code.
+
+    The CSV is expected to contain at least two columns: a localidad code
+    (``COD_LOC``) and a population count (``POBLACION``).  Columns are mapped
+    to the standardized ``[place_geoid, population]`` output.
+
+    Args:
+        cache_csv: Destination CSV path.
+        source_url: Direct download URL for the INDEC population CSV.  If None
+            and the cache already exists, returns the cache path unchanged.
+        overwrite: If True, always re-download and overwrite the cache.
+        timeout: Per-request timeout in seconds.
+
+    Returns:
+        Path to the cached CSV with columns ``[place_geoid, population]``.
+    """
+    cache_csv = Path(cache_csv)
+    if cache_csv.exists() and not overwrite:
+        return cache_csv
+    if source_url is None:
+        raise FileNotFoundError(
+            f"INDEC population cache {cache_csv} is missing and no "
+            "source_url was provided. Set download.census_areas.population_url "
+            "in the AR country profile."
+        )
+    print(f"Fetching INDEC population from {source_url}...")
+    resp = requests.get(source_url, stream = True, timeout = timeout)
+    resp.raise_for_status()
+    cache_csv.parent.mkdir(parents = True, exist_ok = True)
+    tmp_csv = cache_csv.with_suffix(".csv.part")
+    with open(tmp_csv, "wb") as f:
+        for chunk in resp.iter_content(chunk_size = 1024 * 1024):
+            f.write(chunk)
+    # Normalize: read, rename COD_LOC->place_geoid, POBLACION->population,
+    # write clean CSV.
+    df = pd.read_csv(tmp_csv, dtype = {_INDEC_LOC_CODE: str})
+    col_map = {}
+    if _INDEC_LOC_CODE in df.columns:
+        col_map[_INDEC_LOC_CODE] = "place_geoid"
+    if _INDEC_POP_COL in df.columns:
+        col_map[_INDEC_POP_COL] = "population"
+    df = df.rename(columns = col_map)
+    missing = [c for c in ("place_geoid", "population") if c not in df.columns]
+    if missing:
+        tmp_csv.unlink(missing_ok = True)
+        raise ValueError(
+            f"INDEC population CSV is missing required columns: {missing}. "
+            f"Found columns: {list(df.columns)}."
+        )
+    df = df.loc[:, ["place_geoid", "population"]].dropna(subset = ["population"])
+    df["population"] = pd.to_numeric(df["population"], errors = "coerce")
+    df = df.dropna(subset = ["population"])
+    df.to_csv(cache_csv, index = False)
+    tmp_csv.unlink(missing_ok = True)
+    print(f"Cached {len(df):,} INDEC locality populations to {cache_csv}")
+    return cache_csv

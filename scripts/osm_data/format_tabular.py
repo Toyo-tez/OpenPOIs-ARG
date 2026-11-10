@@ -56,11 +56,12 @@ Output file (in osm_data directory):
 import argparse
 
 import duckdb
+import geopandas as gpd
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from openpois.config import indicators_enabled, load_config
+from openpois.config import country_code, indicators_enabled, load_config
 
 from openpois.conflation.taxonomy import (
     assign_osm_shared_label,
@@ -88,6 +89,8 @@ LIFECYCLE_PREFIXES = (
     or []
 )
 
+COUNTRY_CODE = country_code(config)
+
 CHANGES_PATH = config.get_file_path("osm_data", "osm_changes")
 VERSIONS_PATH = config.get_file_path("osm_data", "osm_versions")
 OUT_PATH = config.get_file_path("osm_data", "osm_observations")
@@ -99,6 +102,8 @@ SNAPSHOT_PATH = config.get_file_path("snapshot_osm", "snapshot")
 # Census reference areas (downloaded + cached on first run).
 INDICATORS_ENABLED = indicators_enabled(config)
 CENSUS_DIR = config.get_dir_path("census_areas")
+
+# --- US Census (base config) ---
 CBSA_URL = config.get("download", "census_areas", "cbsa_url")
 PLACE_URL = config.get("download", "census_areas", "place_url")
 CBSA_SHP_NAME = config.get("download", "census_areas", "cbsa_shp_name")
@@ -107,6 +112,13 @@ POPULATION_API_URL = config.get("download", "census_areas", "population_api_url"
 CBSA_SHP = config.get_file_path("census_areas", "cbsa_shapefile")
 PLACE_SHP = config.get_file_path("census_areas", "place_shapefile")
 POPULATION_CSV = config.get_file_path("census_areas", "place_population")
+
+# --- INDEC (Argentina) ---
+INDEC_DEPTO_URL = config.get("download", "census_areas", "indec_depto_url", fail_if_none = False)
+INDEC_LOC_URL = config.get("download", "census_areas", "indec_loc_url", fail_if_none = False)
+INDEC_DEPTO_SHP_NAME = config.get("download", "census_areas", "indec_depto_shp_name", fail_if_none = False)
+INDEC_LOC_SHP_NAME = config.get("download", "census_areas", "indec_loc_shp_name", fail_if_none = False)
+INDEC_POPULATION_URL = config.get("download", "census_areas", "population_url", fail_if_none = False)
 
 # DuckDB execution limits. The sort operator spills past memory_limit so this
 # caps peak RAM independent of input size. Threads default to os.cpu_count()
@@ -122,16 +134,63 @@ def ensure_census_layers():
 
     Returns ``(None, None)`` when ``indicators.enabled`` is false in the active
     country profile; callers then fall back to the default indicator values.
+
+    Country branching:
+
+    * US (default): US Census CBSA + Place shapefiles from
+      ``download.census_areas.cbsa_url`` / ``place_url``, population from the
+      2020 Decennial Census API.
+    * AR: INDEC Marco Geográfico departamento + localidad shapefiles from
+      ``download.census_areas.indec_depto_url`` / ``indec_loc_url``,
+      population from INDEC Census 2022 (direct CSV download).
     """
     if not INDICATORS_ENABLED:
         print("Indicators disabled in config; using NO_MSA / rural defaults.")
         return None, None
+
+    if COUNTRY_CODE == "AR":
+        return _ensure_indec_layers()
+    return _ensure_us_layers()
+
+
+def _ensure_us_layers() -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | None]:
+    """US Census reference layers (CBSA + Place + Decennial population)."""
     census_areas.download_census_zip(CBSA_URL, CENSUS_DIR, CBSA_SHP_NAME)
     census_areas.download_census_zip(PLACE_URL, CENSUS_DIR, PLACE_SHP_NAME)
     census_areas.fetch_place_population(
         POPULATION_CSV, api_url = POPULATION_API_URL
     )
     return indicators.load_classified_layers(CBSA_SHP, PLACE_SHP, POPULATION_CSV)
+
+
+def _ensure_indec_layers() -> tuple[gpd.GeoDataFrame | None, gpd.GeoDataFrame | None]:
+    """INDEC (Argentina) reference layers (departamento + localidad + population)."""
+    if not all(
+        (INDEC_DEPTO_URL, INDEC_LOC_URL, INDEC_DEPTO_SHP_NAME,
+         INDEC_LOC_SHP_NAME, INDEC_POPULATION_URL)
+    ):
+        raise ValueError(
+            "AR indicators are enabled but download.census_areas INDEC URLs "
+            "are incomplete. Set indec_depto_url, indec_loc_url, "
+            "indec_depto_shp_name, indec_loc_shp_name and population_url "
+            "in the AR country profile."
+        )
+    census_areas.download_census_zip(
+        INDEC_DEPTO_URL, CENSUS_DIR, INDEC_DEPTO_SHP_NAME
+    )
+    census_areas.download_census_zip(
+        INDEC_LOC_URL, CENSUS_DIR, INDEC_LOC_SHP_NAME
+    )
+    census_areas.fetch_indec_population(
+        CENSUS_DIR / "indec_population_2022.csv",
+        source_url = INDEC_POPULATION_URL,
+    )
+    depto_shp = CENSUS_DIR / INDEC_DEPTO_SHP_NAME
+    localidad_shp = CENSUS_DIR / INDEC_LOC_SHP_NAME
+    population_csv = CENSUS_DIR / "indec_population_2022.csv"
+    return indicators.load_indec_classified_layers(
+        depto_shp, localidad_shp, population_csv
+    )
 
 
 def build_element_indicator_map(msa_gdf, classified_places_gdf) -> pd.DataFrame:

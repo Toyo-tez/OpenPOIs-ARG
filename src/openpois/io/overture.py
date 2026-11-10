@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -63,6 +64,54 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 import requests
+from requests.exceptions import ConnectionError as RequestsConnectionError
+
+
+# -----------------------------------------------------------------------------
+# Download retry
+# -----------------------------------------------------------------------------
+
+# Network / DNS errors worth retrying. ``socket.gaierror`` is an OSError
+# subclass, so DNS resolution failures (the failure mode seen when S3 cannot
+# be resolved) are caught here.
+_RETRYABLE_ERRORS = (
+    RequestsConnectionError,
+    TimeoutError,
+    OSError,
+)
+
+MAX_DOWNLOAD_RETRIES = 2
+_RETRY_BASE_DELAY = 5  # seconds, doubled each attempt
+
+
+def _notify_retry(attempt: int, max_retries: int, exc: Exception, context: str) -> None:
+    """Print a user-facing retry notification before backing off."""
+    wait = min(60, _RETRY_BASE_DELAY * (2 ** (attempt - 1)))
+    print(
+        f"\n  [retry {attempt}/{max_retries}] {context} failed with "
+        f"{type(exc).__name__}: {exc}. Retrying in {wait}s...",
+        flush=True,
+    )
+    time.sleep(wait)
+
+
+def _retry_with_notify(func, context: str, max_retries: int = MAX_DOWNLOAD_RETRIES):
+    """Call ``func``, retrying on network/DNS errors with user notification.
+
+    Retries up to ``max_retries`` times (``max_retries + 1`` total attempts).
+    Notifies the user before each retry. Re-raises the last exception if all
+    attempts fail.
+    """
+    last_exc = None
+    for attempt in range(1, max_retries + 2):
+        try:
+            return func()
+        except _RETRYABLE_ERRORS as exc:
+            last_exc = exc
+            if attempt > max_retries:
+                break
+            _notify_retry(attempt, max_retries, exc, context)
+    raise last_exc
 
 
 # -----------------------------------------------------------------------------
@@ -554,8 +603,11 @@ def download_overture_snapshot(
     temp_directory = parts_dir / "duckdb_tmp"
     temp_directory.mkdir(parents = True, exist_ok = True)
 
-    part_keys = _list_overture_part_keys(
-        release_date = release_date, bucket = bucket
+    part_keys = _retry_with_notify(
+        func=lambda: _list_overture_part_keys(
+            release_date=release_date, bucket=bucket
+        ),
+        context="S3 part listing",
     )
     total = len(part_keys)
     print(
@@ -573,17 +625,24 @@ def download_overture_snapshot(
 
     def _run_one(key: str, intermediate: Path) -> str:
         part_s3_uri = f"s3://{bucket}/{key}"
-        _download_one_part(
-            part_s3_uri = part_s3_uri,
-            intermediate_path = intermediate,
-            release_date = release_date,
-            bbox_predicate = bbox_predicate,
-            taxonomy_predicate = taxonomy_predicate,
-            source_label = source_label,
-            s3_region = s3_region,
-            memory_limit = duckdb_memory_limit,
-            threads = duckdb_threads,
-            temp_directory = temp_directory,
+
+        def _download() -> None:
+            _download_one_part(
+                part_s3_uri=part_s3_uri,
+                intermediate_path=intermediate,
+                release_date=release_date,
+                bbox_predicate=bbox_predicate,
+                taxonomy_predicate=taxonomy_predicate,
+                source_label=source_label,
+                s3_region=s3_region,
+                memory_limit=duckdb_memory_limit,
+                threads=duckdb_threads,
+                temp_directory=temp_directory,
+            )
+
+        _retry_with_notify(
+            func=_download,
+            context=f"part download {Path(key).stem}",
         )
         return intermediate.name
 

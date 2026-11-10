@@ -39,14 +39,14 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import yaml
-from openpois.config import indicators_enabled, load_config
+from openpois.config import country_code, indicators_enabled, load_config
 
 from openpois.conflation.taxonomy import (
     assign_osm_shared_label,
     load_match_radii,
     load_osm_crosswalk,
 )
-from openpois.io import indicators
+from openpois.io import census_areas, indicators
 from openpois.models import reconstruct
 
 
@@ -67,14 +67,53 @@ DELTA_GROUP = config.get(
 
 # Census layers for enrichment.
 INDICATORS_ENABLED = indicators_enabled(config)
+COUNTRY_CODE = country_code(config)
 CBSA_SHP = config.get_file_path("census_areas", "cbsa_shapefile")
 PLACE_SHP = config.get_file_path("census_areas", "place_shapefile")
 POPULATION_CSV = config.get_file_path("census_areas", "place_population")
+
+# --- INDEC (Argentina) ---
+INDEC_DEPTO_URL = config.get("download", "census_areas", "indec_depto_url", fail_if_none = False)
+INDEC_LOC_URL = config.get("download", "census_areas", "indec_loc_url", fail_if_none = False)
+INDEC_DEPTO_SHP_NAME = config.get("download", "census_areas", "indec_depto_shp_name", fail_if_none = False)
+INDEC_LOC_SHP_NAME = config.get("download", "census_areas", "indec_loc_shp_name", fail_if_none = False)
+INDEC_POPULATION_URL = config.get("download", "census_areas", "population_url", fail_if_none = False)
+CENSUS_DIR = config.get_dir_path("census_areas")
 
 TIMES = np.arange(101) / 10.0           # 0.0, 0.1, ..., 10.0 years
 BATCH_ROWS = 500_000
 ROW_GROUP_SIZE = 50_000
 _SEP = "\x1f"
+
+
+def _load_indec_layers() -> tuple:
+    """Load INDEC (Argentina) reference layers for indicator enrichment."""
+    if not all(
+        (INDEC_DEPTO_URL, INDEC_LOC_URL, INDEC_DEPTO_SHP_NAME,
+         INDEC_LOC_SHP_NAME, INDEC_POPULATION_URL)
+    ):
+        raise ValueError(
+            "AR indicators are enabled but download.census_areas INDEC URLs "
+            "are incomplete. Set indec_depto_url, indec_loc_url, "
+            "indec_depto_shp_name, indec_loc_shp_name and population_url "
+            "in the AR country profile."
+        )
+    census_areas.download_census_zip(
+        INDEC_DEPTO_URL, CENSUS_DIR, INDEC_DEPTO_SHP_NAME
+    )
+    census_areas.download_census_zip(
+        INDEC_LOC_URL, CENSUS_DIR, INDEC_LOC_SHP_NAME
+    )
+    census_areas.fetch_indec_population(
+        CENSUS_DIR / "indec_population_2022.csv",
+        source_url = INDEC_POPULATION_URL,
+    )
+    depto_shp = CENSUS_DIR / INDEC_DEPTO_SHP_NAME
+    localidad_shp = CENSUS_DIR / INDEC_LOC_SHP_NAME
+    population_csv = CENSUS_DIR / "indec_population_2022.csv"
+    return indicators.load_indec_classified_layers(
+        depto_shp, localidad_shp, population_csv
+    )
 
 
 class CurveCache:
@@ -245,9 +284,12 @@ if __name__ == "__main__":
 
     print("Loading Census layers ...")
     if INDICATORS_ENABLED:
-        msa_gdf, classified_places = indicators.load_classified_layers(
-            CBSA_SHP, PLACE_SHP, POPULATION_CSV
-        )
+        if COUNTRY_CODE == "AR":
+            msa_gdf, classified_places = _load_indec_layers()
+        else:
+            msa_gdf, classified_places = indicators.load_classified_layers(
+                CBSA_SHP, PLACE_SHP, POPULATION_CSV
+            )
     else:
         print("Indicators disabled in config; using NO_MSA / rural defaults.")
         msa_gdf, classified_places = None, None

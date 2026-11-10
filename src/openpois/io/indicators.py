@@ -71,6 +71,35 @@ def load_classified_layers(
     return msa_gdf, classified
 
 
+def load_indec_classified_layers(
+    depto_shp: Path,
+    localidad_shp: Path,
+    population_csv: Path,
+) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
+    """
+    Load and prepare INDEC (Argentina) reference layers for indicators.
+
+    Mirrors :func:`load_classified_layers` but reads INDEC's Marco Geográfico
+    shapefiles (departamentos / localidades) and INDEC Census 2022 population.
+
+    Args:
+        depto_shp: Path to the INDEC departamento/partido shapefile.
+        localidad_shp: Path to the INDEC localidad shapefile.
+        population_csv: Path to the cached INDEC population CSV.
+
+    Returns:
+        ``(msa_gdf, classified_places_gdf)`` — both EPSG:4326.  ``msa_code``
+        carries the departamento/partido code; ``urban_rural`` classifies each
+        localidad as urban / suburban / rural per population + density.
+    """
+    msa_gdf = census_areas.load_departamento_boundary(depto_shp)
+    classified = classify_places(
+        census_areas.load_localidad(localidad_shp),
+        census_areas.load_place_population(population_csv),
+    )
+    return msa_gdf, classified
+
+
 def classify_places(
     places_gdf: gpd.GeoDataFrame,
     population_df: pd.DataFrame,
