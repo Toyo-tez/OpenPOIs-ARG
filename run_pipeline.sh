@@ -3,7 +3,7 @@
 # run_pipeline.sh - One-shot OpenPOIs pipeline runner
 #
 # Runs the full pipeline end-to-end from a single command:
-#   download_history → format_tabular → osm_turnover → snapshot_osm →
+#   download_history → snapshot_osm → format_tabular → osm_turnover →
 #   snapshot_overture → rate → build_ghosts → conflate_baseline →
 #   apply_cd → calibrate → apply_manual_overrides → build PMTiles →
 #   deploy to site-data → restart pmtiles + site
@@ -180,19 +180,19 @@ main() {
         run_step download_history download_history
     fi
 
-    # 3. format_tabular (raw Python, --entrypoint python)
+    # 3. snapshot_osm (format_tabular / osm_turnover need osm_snapshot.parquet)
+    if ! step_done "${COUNTRY_ROOT}/snapshots/osm/${OSM_DATA_VERSION}/osm_snapshot.parquet" "snapshot_osm"; then
+        run_step snapshot_osm snapshot_osm
+    fi
+
+    # 4. format_tabular (raw Python, --entrypoint python)
     if ! step_done "${COUNTRY_ROOT}/osm_data/${OSM_DATA_VERSION}/osm_observations.parquet" "format_tabular"; then
         run_python_step format_tabular scripts/osm_data/format_tabular.py
     fi
 
-    # 4. osm_turnover (raw Python)
+    # 5. osm_turnover (raw Python)
     if ! step_done "${COUNTRY_ROOT}/osm_turnover_model/${MODEL_OUTPUT_VERSION}/fitted_params.csv" "osm_turnover"; then
         run_python_step osm_turnover scripts/models/osm_turnover.py
-    fi
-
-    # 5. snapshot_osm
-    if ! step_done "${COUNTRY_ROOT}/snapshots/osm/${OSM_DATA_VERSION}/osm_snapshot.parquet" "snapshot_osm"; then
-        run_step snapshot_osm snapshot_osm
     fi
 
     # 6. snapshot_overture (retry logic lives in src/openpois/io/overture.py)
